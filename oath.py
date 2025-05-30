@@ -2,6 +2,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import streamlit as st
 import secrets
+import base64
 
 SCOPE = ["user-library-read", "playlist-modify-public"]
 
@@ -9,7 +10,8 @@ def authorize():
     try:
         # Initialize session state for OAuth if not exists
         if 'oauth_state' not in st.session_state:
-            st.session_state.oauth_state = secrets.token_urlsafe(16)
+            # Use a shorter, simpler state
+            st.session_state.oauth_state = base64.b64encode(secrets.token_bytes(8)).decode('utf-8').replace('=', '').replace('+', '').replace('/', '')
             st.session_state.oauth_redirect_uri = f"https://catch-your-vibe.streamlit.app/"
 
         # Get the current host
@@ -24,6 +26,7 @@ def authorize():
         st.write(f"Using redirect URI: {redirect_uri}")
         st.write(f"Configured redirect URI: {st.secrets['redirect_uri']}")
 
+        # Create the auth manager with the state
         sp_auth = SpotifyOAuth(scope=SCOPE, 
                               client_id=st.secrets["client_id"],
                               client_secret=st.secrets["client_secret"],
@@ -47,7 +50,7 @@ def authorize():
         if code and (not state or state != st.session_state.oauth_state):
             st.error("Invalid state parameter. Please try logging in again.")
             # Clear the session state to force a new authorization
-            st.session_state.oauth_state = secrets.token_urlsafe(16)
+            st.session_state.oauth_state = base64.b64encode(secrets.token_bytes(8)).decode('utf-8').replace('=', '').replace('+', '').replace('/', '')
             st.session_state.sp = None
             # Generate new authorization URL
             auth_url = sp_auth.get_authorize_url()
