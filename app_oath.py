@@ -87,7 +87,7 @@ def app_display_welcome():
     )
 
     basic_link_html = " <a target=\"_self\" href=\"{url}\" >{msg}</a> ".format(
-        url="https://catch-a-vibe-basic.streamlit.app",
+        url="https://catch-a-vibe-demo.streamlit.app",
         msg="Click me to go to skip the authentication and go to the demo app!"
     )
     
