@@ -93,7 +93,8 @@ def app_display_welcome():
     oauth = SpotifyOAuth(scope=scopes,
                          redirect_uri=uri,
                          client_id=cid,
-                         client_secret=csecret)
+                         client_secret=csecret,
+                         state="asdf")
     
     # store oauth in session
     st.session_state.oauth = oauth
