@@ -85,13 +85,18 @@ def app_display_welcome():
         url=auth_url,
         msg="Click me to authenticate!"
     )
+
+    basic_link_html = " <a target=\"_self\" href=\"{url}\" >{msg}</a> ".format(
+        url="https://catch-a-vibe-basic.streamlit.app",
+        msg="Click me to go to skip the authentication and go to the demo app!"
+    )
     
 
     st.title("Catch a Vibe")
 
     if not st.session_state["signed_in"]:
         st.markdown(link_html, unsafe_allow_html=True)
-        
+        st.markdown(basic_link_html, unsafe_allow_html=True)
         
         
 def app(sp):
