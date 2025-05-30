@@ -12,7 +12,7 @@ def authorize():
             st.session_state.oauth_state = secrets.token_urlsafe(16)
 
         # Get the current host
-        current_host = st.experimental_get_query_params().get("host", [None])[0]
+        current_host = st.query_params.get("host", [None])[0]
         if not current_host:
             current_host = "catch-your-vibe.streamlit.app"  # Default to your deployed domain
 
