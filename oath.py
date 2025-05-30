@@ -19,16 +19,27 @@ def authorize():
 # Use OAth to create a playlist for the user
 def create_playlist(df, playlist_name):
     try:
+        print("a")
         if st.session_state.sp is None:
             st.error("Please log in with Spotify first.")
             return False
         
+        print("b")
         sp = st.session_state.sp
+        
+        print("c")
 
         song_ids = df['track_id'][:30].tolist()
 
+        print("d")
+
         playlist = sp.user_playlist_create(user=sp.me()['id'], name=playlist_name, public=True)
+
+        print("e")
+
         sp.user_playlist_add_tracks(user=sp.me()['id'], playlist_id=playlist['id'], tracks=song_ids)
+
+        print("f")
 
         return True
     except Exception as e:
