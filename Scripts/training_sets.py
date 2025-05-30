@@ -6,7 +6,7 @@ from tqdm import tqdm
 from collections import defaultdict
 import streamlit as st
 
-
+# Build a training set of tracks and the playlists they appear on
 def build_playlist_training_set():
     # Initialize Spotify client
     sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
