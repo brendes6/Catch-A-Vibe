@@ -2,46 +2,73 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import streamlit as st
 
-SCOPE= ["user-library-read", "playlist-modify-public"]
+SCOPE = ["user-library-read", "playlist-modify-public"]
 
 def authorize():
-    sp_auth = SpotifyOAuth(scope=SCOPE, client_id=st.secrets["client_id"],
-                                                    client_secret=st.secrets["client_secret"],
-                                                    redirect_uri=st.secrets["redirect_uri"],
-                                                    open_browser=True)
+    try:
+        sp_auth = SpotifyOAuth(scope=SCOPE, 
+                              client_id=st.secrets["client_id"],
+                              client_secret=st.secrets["client_secret"],
+                              redirect_uri=st.secrets["redirect_uri"],
+                              open_browser=True)
         
-    if "sp" not in st.session_state:
-        st.session_state.sp = None
+        if "sp" not in st.session_state:
+            st.session_state.sp = None
 
-    st.session_state.sp = spotipy.Spotify(auth_manager=sp_auth)
-    return True
+        # Get the token
+        token_info = sp_auth.get_access_token()
+        if not token_info:
+            st.error("Failed to get access token")
+            return False
+
+        # Create Spotify client with the token
+        st.session_state.sp = spotipy.Spotify(auth_manager=sp_auth)
+        
+        # Verify the connection by making a simple API call
+        try:
+            st.session_state.sp.me()
+            return True
+        except Exception as e:
+            st.error(f"Failed to verify Spotify connection: {str(e)}")
+            return False
+            
+    except Exception as e:
+        st.error(f"Authorization failed: {str(e)}")
+        return False
 
 # Use OAth to create a playlist for the user
 def create_playlist(df, playlist_name):
     try:
-        print("a")
         if st.session_state.sp is None:
             st.error("Please log in with Spotify first.")
             return False
         
-        print("b")
         sp = st.session_state.sp
         
-        print("c")
+        # Verify we have a valid connection
+        try:
+            user = sp.me()
+        except Exception as e:
+            st.error(f"Spotify connection lost: {str(e)}")
+            return False
 
         song_ids = df['track_id'][:30].tolist()
+        
+        # Create the playlist
+        try:
+            playlist = sp.user_playlist_create(user=user['id'], name=playlist_name, public=True)
+        except Exception as e:
+            st.error(f"Failed to create playlist: {str(e)}")
+            return False
 
-        print("d")
-
-        playlist = sp.user_playlist_create(user=sp.me()['id'], name=playlist_name, public=True)
-
-        print("e")
-
-        sp.user_playlist_add_tracks(user=sp.me()['id'], playlist_id=playlist['id'], tracks=song_ids)
-
-        print("f")
+        # Add tracks to the playlist
+        try:
+            sp.user_playlist_add_tracks(user=user['id'], playlist_id=playlist['id'], tracks=song_ids)
+        except Exception as e:
+            st.error(f"Failed to add tracks to playlist: {str(e)}")
+            return False
 
         return True
     except Exception as e:
-        st.error(f"Failed to create playlist: {str(e)}")
+        st.error(f"Unexpected error in create_playlist: {str(e)}")
         return False

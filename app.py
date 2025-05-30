@@ -9,11 +9,25 @@ st.set_page_config(page_title="Catch a Vibe", layout="wide")
 # Add Spotify login button in top left
 col1, col2 = st.columns([1, 5])
 with col1:
-    if st.button("Login with Spotify"):
-        if  authorize():
-            st.success("Logged in with Spotify!")
-        else:
-            st.error("Failed to log in with Spotify.")
+    # Check if already authorized
+    if "sp" in st.session_state and st.session_state.sp is not None:
+        try:
+            # Verify the connection is still valid
+            st.session_state.sp.me()
+            st.success("✓ Connected to Spotify")
+        except:
+            st.session_state.sp = None
+            if st.button("Login with Spotify"):
+                if authorize():
+                    st.success("Logged in with Spotify!")
+                else:
+                    st.error("Failed to log in with Spotify.")
+    else:
+        if st.button("Login with Spotify"):
+            if authorize():
+                st.success("Logged in with Spotify!")
+            else:
+                st.error("Failed to log in with Spotify.")
 
 st.title("Catch a Vibe")
 
