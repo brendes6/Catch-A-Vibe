@@ -28,6 +28,7 @@ def sign_in(token):
 
 def app_get_token():
     try:
+
         token = get_token(st.session_state.oauth, st.session_state.code)
     except Exception as e:
         st.error("An error occurred during token retrieval!")
@@ -52,6 +53,26 @@ def app_sign_in():
         
     return sp
 
+
+def get_oauth():
+    cid = st.secrets["client_id"]
+    csecret = st.secrets["client_secret"]
+    uri = st.secrets["redirect_uri"]
+
+    # set scope and establish connection
+    scopes = " ".join(["user-read-private",
+                       "playlist-read-private",
+                       "playlist-modify-private",
+                       "playlist-modify-public",
+                       "user-read-recently-played"])
+
+    # create oauth object
+    oauth = SpotifyOAuth(scope=scopes,
+                         redirect_uri=uri,
+                         client_id=cid,
+                         client_secret=csecret)
+
+    return oauth
 
 
 def app_display_welcome():
@@ -152,7 +173,7 @@ if "cached_token" not in st.session_state:
 if "code" not in st.session_state:
     st.session_state.code = ""
 if "oauth" not in st.session_state:
-    st.session_state.oauth = None
+    st.session_state.oauth = get_oauth()
 
 url_params = st.query_params
 
