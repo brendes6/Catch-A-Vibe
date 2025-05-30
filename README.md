@@ -1,4 +1,4 @@
-# Catch A Vibe – An NLP-Powered Spotify Playlist Generator
+# Catch A Vibe – An NLP-Powered Playlist Generator
 
 Ever had a playlist name pop into your head and think, *"I wish Spotify could just auto-fill this for me"*? That's what this app does.
 
@@ -48,7 +48,7 @@ My inspiration for this project came from constantly using the Spotify app and n
 
 ## Try It Live
 
-
+https://catch-a-vibe.streamlit.app/
 
 ---
 
