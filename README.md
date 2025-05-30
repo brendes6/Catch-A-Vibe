@@ -12,14 +12,12 @@ The model uses [Sentence Transformers](https://www.sbert.net/) to embed both pla
 
 If you upload a picture, we use OpenAI's CLIP to turn that image into a text-like vibe embedding, then generate songs accordingly.
 
-The app allows you to log in with Spotify to directly export the created playlist into your account!
 ---
 
 ## Features
 
 - Generate a playlist from any vibe title — even niche or emotional ones
 - Upload a picture and get songs that *sound* like the image looks
-- Log in with Spotify and export your playlist directly
 - Fast, responsive UI built with Streamlit
 - Works for multiple kinds of music: pop, indie, jazz, rap, rock, lofi, and more
 
@@ -58,6 +56,6 @@ My inspiration for this project came from constantly using the Spotify app and n
 
 - Python + Streamlit
 - Pandas + numpy
-- Spotify Web API (with OAuth)
+- Spotify Web API 
 - SentenceTransformers (MiniLM or similar)
 - OpenAI CLIP (for image understanding)
