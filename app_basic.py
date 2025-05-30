@@ -1,6 +1,5 @@
 import streamlit as st
 from util import make_recommendations, get_all_songs
-from oath import create_playlist
 from PIL import Image
 import io
 
@@ -61,15 +60,3 @@ with tab3:
         image = Image.open(io.BytesIO(image_bytes))
         st.session_state.recs_df, st.session_state.playlist_name = make_recommendations(image=image)
         display_recommendations(st.session_state.playlist_name, st.session_state.recs_df)
-
-# If a playlist is created, allow the user to save it to their Spotify account
-if st.session_state.recs_df is not None:
-    if st.button("Save this playlist to Spotify"):
-        if create_playlist(st.session_state.recs_df, st.session_state.playlist_name):
-            st.success("Playlist created successfully!")
-            # Force a rerun to clear the URL parameters
-            st.rerun()
-        else:
-            # Don't show error if we're just waiting for authorization
-            if not st.query_params.get("code", [None])[0]:
-                st.info("Please complete the Spotify authorization to create your playlist.")
