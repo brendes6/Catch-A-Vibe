@@ -54,7 +54,7 @@ def app_sign_in():
     return sp
 
 
-def get_oauth():
+def get_oauth(state=None):
     cid = st.secrets["client_id"]
     csecret = st.secrets["client_secret"]
     uri = st.secrets["redirect_uri"]
@@ -66,11 +66,12 @@ def get_oauth():
                        "playlist-modify-public",
                        "user-read-recently-played"])
 
-    # create oauth object
+    # create oauth object with state if provided
     oauth = SpotifyOAuth(scope=scopes,
                          redirect_uri=uri,
                          client_id=cid,
-                         client_secret=csecret)
+                         client_secret=csecret,
+                         state=state)
 
     return oauth
 
@@ -100,13 +101,8 @@ def app_display_welcome():
     # retrieve auth url
     auth_url = oauth.get_authorize_url()
     
-    # Store the OAuth state in URL parameters
-    st.experimental_set_query_params(
-        state=oauth._state,
-        code_verifier=oauth._code_verifier,
-        code_challenge=oauth._code_challenge,
-        code_challenge_method=oauth._code_challenge_method
-    )
+    # Store the state in URL parameters
+    st.experimental_set_query_params(state=oauth.state)
     
     # this SHOULD open the link in the same tab when Streamlit Cloud is updated
     # via the "_self" target
@@ -192,14 +188,9 @@ elif "code" in url_params:
     # all params stored as lists, see doc for explanation
     st.session_state.code = url_params["code"][0]
     
-    # Recreate OAuth object with stored parameters
-    oauth = get_oauth()
-    if all(param in url_params for param in ["state", "code_verifier", "code_challenge", "code_challenge_method"]):
-        oauth._state = url_params["state"][0]
-        oauth._code_verifier = url_params["code_verifier"][0]
-        oauth._code_challenge = url_params["code_challenge"][0]
-        oauth._code_challenge_method = url_params["code_challenge_method"][0]
-    
+    # Recreate OAuth object with stored state
+    state = url_params.get("state", [None])[0]
+    oauth = get_oauth(state=state)
     st.session_state.oauth = oauth
     app_get_token()
     sp = app_sign_in()
