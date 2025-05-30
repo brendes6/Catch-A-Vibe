@@ -74,3 +74,5 @@ if st.session_state.recs_df is not None:
     if st.button("Save this playlist to Spotify"):
         if create_playlist(st.session_state.recs_df, st.session_state.playlist_name):
             st.success("Playlist created successfully!")
+        else:
+            st.error("Failed to create playlist.")
