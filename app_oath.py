@@ -28,25 +28,25 @@ def sign_in(token):
 
 def app_get_token():
     try:
-        token = get_token(st.session_state["oauth"], st.session_state["code"])
+        token = get_token(st.session_state.oauth, st.session_state.code)
     except Exception as e:
         st.error("An error occurred during token retrieval!")
         st.write("The error is as follows:")
         st.write(e)
     else:
-        st.session_state["cached_token"] = token
+        st.session_state.cached_token = token
 
 
 
 def app_sign_in():
     try:
-        sp = sign_in(st.session_state["cached_token"])
+        sp = sign_in(st.session_state.cached_token)
     except Exception as e:
         st.error("An error occurred during sign-in!")
         st.write("The error is as follows:")
         st.write(e)
     else:
-        st.session_state["signed_in"] = True
+        st.session_state.signed_in = True
         app_display_welcome()
         st.success("Sign in success!")
         
@@ -74,7 +74,7 @@ def app_display_welcome():
                          client_id=cid,
                          client_secret=csecret)
     # store oauth in session
-    st.session_state["oauth"] = oauth
+    st.session_state.oauth = oauth
 
     # retrieve auth url
     auth_url = oauth.get_authorize_url()
@@ -94,7 +94,7 @@ def app_display_welcome():
 
     st.title("Catch a Vibe")
 
-    if not st.session_state["signed_in"]:
+    if not st.session_state.signed_in:
         st.markdown(link_html, unsafe_allow_html=True)
         st.markdown(basic_link_html, unsafe_allow_html=True)
         
@@ -146,23 +146,23 @@ def app(sp):
 
    
 if "signed_in" not in st.session_state:
-    st.session_state["signed_in"] = False
+    st.session_state.signed_in = False
 if "cached_token" not in st.session_state:
-    st.session_state["cached_token"] = ""
+    st.session_state.cached_token = ""
 if "code" not in st.session_state:
-    st.session_state["code"] = ""
+    st.session_state.code = ""
 if "oauth" not in st.session_state:
-    st.session_state["oauth"] = None
+    st.session_state.oauth = None
 
 url_params = st.query_params
 
 # attempt sign in with cached token
-if st.session_state["cached_token"] != "":
+if st.session_state.cached_token != "":
     sp = app_sign_in()
 # if no token, but code in url, get code, parse token, and sign in
 elif "code" in url_params:
     # all params stored as lists, see doc for explanation
-    st.session_state["code"] = url_params["code"][0]
+    st.session_state.code = url_params["code"][0]
     app_get_token()
     sp = app_sign_in()
 # otherwise, prompt for redirect
@@ -170,5 +170,5 @@ else:
     app_display_welcome()
     
 
-if st.session_state["signed_in"]:
+if st.session_state.signed_in:
     app(sp)
