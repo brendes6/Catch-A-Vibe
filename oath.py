@@ -10,27 +10,36 @@ def authorize():
                               client_id=st.secrets["client_id"],
                               client_secret=st.secrets["client_secret"],
                               redirect_uri=st.secrets["redirect_uri"],
-                              open_browser=True)
+                              open_browser=False)
         
         if "sp" not in st.session_state:
             st.session_state.sp = None
 
-        # Get the token
-        token_info = sp_auth.get_access_token()
-        print(token_info)
-        if not token_info:
-            st.error("Failed to get access token")
-            return False
+        # Check if we have a code in the URL
+        query_params = st.query_params
+        code = query_params.get("code", [None])[0]
 
-        # Create Spotify client with the token
-        st.session_state.sp = spotipy.Spotify(auth_manager=sp_auth)
-        
-        # Verify the connection by making a simple API call
-        try:
-            st.session_state.sp.me()
-            return True
-        except Exception as e:
-            st.error(f"Failed to verify Spotify connection: {str(e)}")
+        if code:
+            # We have a code, exchange it for a token
+            token_info = sp_auth.get_access_token(code)
+            if not token_info:
+                st.error("Failed to get access token")
+                return False
+
+            access_token = token_info["access_token"]
+            st.session_state.sp = spotipy.Spotify(auth=access_token)
+            
+            # Verify the connection
+            try:
+                st.session_state.sp.me()
+                return True
+            except Exception as e:
+                st.error(f"Failed to verify Spotify connection: {str(e)}")
+                return False
+        else:
+            # No code, generate the authorization URL
+            auth_url = sp_auth.get_authorize_url()
+            st.markdown(f'<a href="{auth_url}" target="_self">Click here to authorize with Spotify</a>', unsafe_allow_html=True)
             return False
             
     except Exception as e:

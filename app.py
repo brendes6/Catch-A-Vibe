@@ -18,16 +18,10 @@ with col1:
         except:
             st.session_state.sp = None
             if st.button("Login with Spotify"):
-                if authorize():
-                    st.success("Logged in with Spotify!")
-                else:
-                    st.error("Failed to log in with Spotify.")
+                authorize()
     else:
         if st.button("Login with Spotify"):
-            if authorize():
-                st.success("Logged in with Spotify!")
-            else:
-                st.error("Failed to log in with Spotify.")
+            authorize()
 
 st.title("Catch a Vibe")
 
