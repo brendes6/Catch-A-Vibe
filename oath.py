@@ -11,10 +11,22 @@ def authorize():
         if 'oauth_state' not in st.session_state:
             st.session_state.oauth_state = secrets.token_urlsafe(16)
 
+        # Get the current host
+        current_host = st.experimental_get_query_params().get("host", [None])[0]
+        if not current_host:
+            current_host = "catch-your-vibe.streamlit.app"  # Default to your deployed domain
+
+        # Construct the redirect URI
+        redirect_uri = f"https://{current_host}/"
+        
+        # Debug information
+        st.write(f"Using redirect URI: {redirect_uri}")
+        st.write(f"Configured redirect URI: {st.secrets['redirect_uri']}")
+
         sp_auth = SpotifyOAuth(scope=SCOPE, 
                               client_id=st.secrets["client_id"],
                               client_secret=st.secrets["client_secret"],
-                              redirect_uri=st.secrets["redirect_uri"],
+                              redirect_uri=redirect_uri,  # Use the constructed URI
                               open_browser=False,
                               state=st.session_state.oauth_state)
         
@@ -25,6 +37,10 @@ def authorize():
         query_params = st.query_params
         code = query_params.get("code", [None])[0]
         state = query_params.get("state", [None])[0]
+
+        # Debug information
+        st.write(f"Received state: {state}")
+        st.write(f"Expected state: {st.session_state.oauth_state}")
 
         # Verify state parameter matches
         if state and state != st.session_state.oauth_state:
