@@ -1,4 +1,3 @@
-
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import streamlit as st
@@ -28,8 +27,9 @@ def sign_in(token):
 
 def app_get_token():
     try:
-
-        token = get_token(st.session_state.oauth, st.session_state.code)
+        # Recreate OAuth object instead of using session state
+        oauth = get_oauth()
+        token = get_token(oauth, st.session_state.code)
     except Exception as e:
         st.error("An error occurred during token retrieval!")
         st.write("The error is as follows:")
@@ -76,7 +76,6 @@ def get_oauth():
 
 
 def app_display_welcome():
-    
     # import secrets from streamlit deployment
     cid = st.secrets["client_id"]
     csecret = st.secrets["client_secret"]
@@ -94,11 +93,16 @@ def app_display_welcome():
                          redirect_uri=uri,
                          client_id=cid,
                          client_secret=csecret)
+    
     # store oauth in session
     st.session_state.oauth = oauth
 
     # retrieve auth url
     auth_url = oauth.get_authorize_url()
+    
+    # Store the state parameter in the URL
+    state = oauth._get_state()
+    st.experimental_set_query_params(state=state)
     
     # this SHOULD open the link in the same tab when Streamlit Cloud is updated
     # via the "_self" target
@@ -112,14 +116,13 @@ def app_display_welcome():
         msg="Click me to go to skip the authentication and go to the demo app!"
     )
     
-
     st.title("Catch a Vibe")
 
     if not st.session_state.signed_in:
         st.markdown(link_html, unsafe_allow_html=True)
         st.markdown(basic_link_html, unsafe_allow_html=True)
-        
-        
+
+
 def app(sp):
     
     # Common function for displaying results
@@ -173,7 +176,7 @@ if "cached_token" not in st.session_state:
 if "code" not in st.session_state:
     st.session_state.code = ""
 if "oauth" not in st.session_state:
-    st.session_state.oauth = get_oauth()
+    st.session_state.oauth = None
 
 url_params = st.query_params
 
@@ -184,6 +187,14 @@ if st.session_state.cached_token != "":
 elif "code" in url_params:
     # all params stored as lists, see doc for explanation
     st.session_state.code = url_params["code"][0]
+    
+    # If we don't have the OAuth object in session state, recreate it
+    if st.session_state.oauth is None:
+        st.session_state.oauth = get_oauth()
+        # Set the state from URL params
+        if "state" in url_params:
+            st.session_state.oauth._state = url_params["state"][0]
+    
     app_get_token()
     sp = app_sign_in()
 # otherwise, prompt for redirect
