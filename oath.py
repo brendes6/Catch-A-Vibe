@@ -7,9 +7,10 @@ SCOPE = ["user-library-read", "playlist-modify-public"]
 
 def authorize():
     try:
-        # Generate a random state parameter for security
+        # Initialize session state for OAuth if not exists
         if 'oauth_state' not in st.session_state:
             st.session_state.oauth_state = secrets.token_urlsafe(16)
+            st.session_state.oauth_redirect_uri = f"https://catch-your-vibe.streamlit.app/"
 
         # Get the current host
         current_host = st.query_params.get("host", [None])[0]
@@ -26,7 +27,7 @@ def authorize():
         sp_auth = SpotifyOAuth(scope=SCOPE, 
                               client_id=st.secrets["client_id"],
                               client_secret=st.secrets["client_secret"],
-                              redirect_uri=redirect_uri,  # Use the constructed URI
+                              redirect_uri=redirect_uri,
                               open_browser=False,
                               state=st.session_state.oauth_state)
         
@@ -42,12 +43,18 @@ def authorize():
         st.write(f"Received state: {state}")
         st.write(f"Expected state: {st.session_state.oauth_state}")
 
-        # Verify state parameter matches
-        if state and state != st.session_state.oauth_state:
+        # If we have a code but no state, or state doesn't match, clear everything and start over
+        if code and (not state or state != st.session_state.oauth_state):
             st.error("Invalid state parameter. Please try logging in again.")
+            # Clear the session state to force a new authorization
+            st.session_state.oauth_state = secrets.token_urlsafe(16)
+            st.session_state.sp = None
+            # Generate new authorization URL
+            auth_url = sp_auth.get_authorize_url()
+            st.markdown(f'<a href="{auth_url}" target="_self">Click here to authorize with Spotify</a>', unsafe_allow_html=True)
             return False
 
-        if code:
+        if code and state == st.session_state.oauth_state:
             try:
                 # We have a code, exchange it for a token
                 token_info = sp_auth.get_access_token(code)
