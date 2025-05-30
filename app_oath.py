@@ -66,11 +66,13 @@ def get_oauth():
                        "playlist-modify-public",
                        "user-read-recently-played"])
 
-    # create oauth object
+    # create oauth object with PKCE
     oauth = SpotifyOAuth(scope=scopes,
                          redirect_uri=uri,
                          client_id=cid,
-                         client_secret=csecret)
+                         client_secret=csecret,
+                         open_browser=False,
+                         cache_handler=None)
 
     return oauth
 
@@ -88,21 +90,19 @@ def app_display_welcome():
                        "playlist-modify-public",
                        "user-read-recently-played"])
 
-    # create oauth object
+    # create oauth object with PKCE
     oauth = SpotifyOAuth(scope=scopes,
                          redirect_uri=uri,
                          client_id=cid,
-                         client_secret=csecret)
+                         client_secret=csecret,
+                         open_browser=False,
+                         cache_handler=None)
     
     # store oauth in session
     st.session_state.oauth = oauth
 
     # retrieve auth url
     auth_url = oauth.get_authorize_url()
-    
-    # Store the state parameter in the URL
-    state = oauth._get_state()
-    st.experimental_set_query_params(state=state)
     
     # this SHOULD open the link in the same tab when Streamlit Cloud is updated
     # via the "_self" target
@@ -188,13 +188,8 @@ elif "code" in url_params:
     # all params stored as lists, see doc for explanation
     st.session_state.code = url_params["code"][0]
     
-    # If we don't have the OAuth object in session state, recreate it
-    if st.session_state.oauth is None:
-        st.session_state.oauth = get_oauth()
-        # Set the state from URL params
-        if "state" in url_params:
-            st.session_state.oauth._state = url_params["state"][0]
-    
+    # Create a fresh OAuth object for token exchange
+    oauth = get_oauth()
     app_get_token()
     sp = app_sign_in()
 # otherwise, prompt for redirect
