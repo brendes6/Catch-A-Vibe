@@ -102,8 +102,8 @@ def app_display_welcome():
     auth_url = oauth.get_authorize_url()
     
     # Store the state in URL parameters
-    st.experimental_set_query_params(state=oauth.state)
-    
+    st.query_params.state = oauth.state
+
     # this SHOULD open the link in the same tab when Streamlit Cloud is updated
     # via the "_self" target
     link_html = " <a target=\"_self\" href=\"{url}\" >{msg}</a> ".format(
