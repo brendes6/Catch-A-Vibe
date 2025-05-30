@@ -17,6 +17,7 @@ def authorize():
 
         # Get the token
         token_info = sp_auth.get_access_token()
+        print(token_info)
         if not token_info:
             st.error("Failed to get access token")
             return False
