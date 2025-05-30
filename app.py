@@ -1,27 +1,12 @@
 import streamlit as st
 from util import make_recommendations, get_all_songs
-from oath import create_playlist, authorize
+from oath import create_playlist
 from PIL import Image
 import io
 
 st.set_page_config(page_title="Catch a Vibe", layout="wide")
 
-# Add Spotify login button in top left
-col1, col2 = st.columns([1, 5])
-with col1:
-    # Check if already authorized
-    if "sp" in st.session_state and st.session_state.sp is not None:
-        try:
-            # Verify the connection is still valid
-            st.session_state.sp.me()
-            st.success("✓ Connected to Spotify")
-        except:
-            st.session_state.sp = None
-            if st.button("Login with Spotify"):
-                authorize()
-    else:
-        if st.button("Login with Spotify"):
-            authorize()
+
 
 st.title("Catch a Vibe")
 
@@ -82,5 +67,9 @@ if st.session_state.recs_df is not None:
     if st.button("Save this playlist to Spotify"):
         if create_playlist(st.session_state.recs_df, st.session_state.playlist_name):
             st.success("Playlist created successfully!")
+            # Force a rerun to clear the URL parameters
+            st.rerun()
         else:
-            st.error("Failed to create playlist.")
+            # Don't show error if we're just waiting for authorization
+            if not st.query_params.get("code", [None])[0]:
+                st.info("Please complete the Spotify authorization to create your playlist.")
