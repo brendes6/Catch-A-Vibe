@@ -4,12 +4,14 @@ import time
 import pandas as pd
 from tqdm import tqdm
 from collections import defaultdict
+import streamlit as st
+
 
 def build_playlist_training_set():
     # Initialize Spotify client
     sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-        client_id="4a1f34ba63f840ceb98fb7a285386ded",
-        client_secret="a158e1fe2a754fdc8453916a00f6d742"
+        client_id=st.secrets["client_id"],
+        client_secret=st.secrets["client_secret"]
     ))
 
     # Define vibe keywords
