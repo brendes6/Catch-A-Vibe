@@ -1,12 +1,21 @@
 import streamlit as st
 from util import make_recommendations, get_all_songs
-from oath import create_playlist
+from oath import create_playlist, authorize
 from PIL import Image
 import io
 
 st.set_page_config(page_title="Catch a Vibe", layout="wide")
-st.title("Catch a Vibe")
 
+# Add Spotify login button in top left
+col1, col2 = st.columns([1, 5])
+with col1:
+    if st.button("Login with Spotify"):
+        if  authorize():
+            st.success("Logged in with Spotify!")
+        else:
+            st.error("Failed to log in with Spotify.")
+
+st.title("Catch a Vibe")
 
 st.markdown("""Generate a playlist from a vibe/title, image, or song.""")
 
