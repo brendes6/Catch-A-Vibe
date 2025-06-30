@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from .util import make_recommendations
+from util import make_recommendations
 
 app = FastAPI()
 
