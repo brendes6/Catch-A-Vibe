@@ -2,10 +2,15 @@ import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import ast
+import os
 
 # Load model and data globally
 sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
-df = pd.read_csv("Data/fullycleaned_data.csv")
+
+current_script_dir = os.path.dirname(__file__)
+data_relative_path = os.path.join(current_script_dir, "Data", "fullycleaned_data.csv")
+
+df = pd.read_csv(data_relative_path)
 features = [f"y{i}" for i in range(1, 385)]
 df[features] = df[features].astype("float32")
 
