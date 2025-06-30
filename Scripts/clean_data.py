@@ -5,13 +5,13 @@ import ast
 from random import sample
 
 # Read playlist data
-df = pd.read_csv("track_playlist_mapping.csv")
+df = pd.read_csv("../Data/track_playlist_mapping.csv")
 
 # Initialize sentence transformer
-model = SentenceTransformer("clip-ViT-B-32")
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Initialize features
-for i in range(1, 513):
+for i in range(1, 385):
     df[f"y{i}"] = 0
 
 # Initialize genres
@@ -32,7 +32,7 @@ for i, row in df.iterrows():
 
         # Get song vector as average vector of playlist titles, then add to features
         song_vec = np.mean([model.encode(title) for title in playlist_titles], axis=0)
-        for j in range(1, 513):
+        for j in range(1, 385):
             df.at[i, f"y{j}"] = song_vec[j-1]
 
         # Store genres based on playlist titles
@@ -88,5 +88,5 @@ df.drop(columns=["playlist_titles"], inplace=True)
 df.drop_duplicates(subset=["name_artist"], inplace=True)
 
 # Save to csv
-df.to_csv("fullycleaned_data.csv", index=False)
+df.to_csv("../Data/fullycleaned_data.csv", index=False)
 

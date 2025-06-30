@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from util import make_recommendations
+from .util import make_recommendations
 
 app = FastAPI()
 
@@ -13,7 +13,7 @@ def recs(vibe_input):
 
     ret = {"songs":[]}
 
-    for song in result[0]["name_artist"].tolist()[:20]:
+    for song in result["name_artist"].tolist()[:20]:
         ret["songs"].append(song)
     
     return ret
