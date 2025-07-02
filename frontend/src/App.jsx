@@ -26,6 +26,7 @@ function App() {
 
   return (
     <>
+      <h1>Catch A Vibe - input your "vibe" to get instant song recommendations!</h1>
       <form onSubmit={handleSearch}>
         <input type="text" value={vibeQuery} onChange={(e) => setVibeQuery(e.target.value)}></input>
       </form>
