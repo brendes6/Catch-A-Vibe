@@ -65,19 +65,13 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Container
-        component="main"
-        maxWidth="lg"
-        sx={{
+        <Box sx={{minHeight: '30vh',
+          width: '100vw',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: '100vh',
-          py: 4, // Use vertical padding
-        }}
-      >
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          flexDirection: 'column',
+          gap: 1,}}>
           <Typography variant="h2" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
             Catch A Vibe
           </Typography>
@@ -86,13 +80,18 @@ function App() {
           </Typography>
         </Box>
 
-        <Box component="form" onSubmit={handleSearch} sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 4, width: '100%', maxWidth: '700px' }}>
+        <Box component="form" onSubmit={handleSearch} sx={{minHeight: '10vh',
+          width: '100vw',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1,}}>
           <TextField
             label="What's the vibe?"
             variant="outlined"
             value={vibeQuery}
             onChange={(e) => setVibeQuery(e.target.value)}
-            sx={{ width: '100%' }}
+            sx={{ }}
             disabled={loading}
           />
           <Button type="submit" variant="contained" size="large" disabled={loading}>
@@ -100,12 +99,13 @@ function App() {
           </Button>
         </Box>
 
-        {loading && <CircularProgress sx={{ my: 4 }} />}
+        {loading && <CircularProgress sx={{ mx: 100, width: "100%", maxWidth: '1000px'}} />}
 
         {error && <Alert severity="error" sx={{ mt: 2, justifyContent: 'center', width: '100%', maxWidth: '700px' }}>{error}</Alert>}
 
         {songPredictions && (
-          <Grid container spacing={2} sx={{ mt: 2, width: '100%', maxWidth: '900px' }}>
+          <Grid container spacing={2} sx={{ mt: 2, width: '100%', alignItems: 'center',
+          justifyContent: 'center', maxWidth: '1900px' }}>
             {songPredictions.map((song, index) => (
               <Grid item xs={12} sm={6} key={`${song}-${index}`}>
                 <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -118,7 +118,6 @@ function App() {
             ))}
           </Grid>
         )}
-      </Container>
     </ThemeProvider>
   );
 }
