@@ -23,9 +23,14 @@ def cosine_sim(a, b):
     a = a / np.linalg.norm(a)
     return np.dot(b, a)
 
-
-# Main recommendation function
 def make_recommendations(vibe):
+    """Generate song recommendations based on a vibe input.
+
+    Input:
+        vibe (str): A description of the desired vibe.
+    Output:
+        pd.DataFrame: A DataFrame containing recommended songs sorted by similarity.
+    """
 
     # Get vector for inputted vibe
     vibe_vector = sentence_transformer.encode(vibe)
