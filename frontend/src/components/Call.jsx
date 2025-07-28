@@ -1,7 +1,7 @@
 export const getRecs = async (vibe) => {
   try {
     const response = await fetch(
-      `https://catch-ur-vibe.fly.dev/recs?vibe_input=${encodeURIComponent(vibe)}`
+      `https://catch-a-vibe-v2.onrender.com/recs?vibe_input=${encodeURIComponent(vibe)}`
     );
 
     if (!response.ok) {
