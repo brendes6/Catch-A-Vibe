@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
-from sentence_transformers import SentenceTransformer
 import ast
 import os
+from fastembed import TextEmbedding
 
-# Load model and data globally
-sentence_transformer = SentenceTransformer("all-MiniLM-L6-v2")
+model = TextEmbedding()
 
 current_script_dir = os.path.dirname(__file__)
 data_relative_path = os.path.join(current_script_dir, "Data", "fullycleaned_data.csv")
@@ -33,7 +32,7 @@ def make_recommendations(vibe):
     """
 
     # Get vector for inputted vibe
-    vibe_vector = sentence_transformer.encode(vibe)
+    vibe_vector = list(model.embed(vibe))[0]
 
     # Calculate similarity between vibe vector and all songs' vectors
     similarities = cosine_sim(vibe_vector, feature_matrix)

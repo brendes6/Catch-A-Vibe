@@ -1,6 +1,6 @@
 pandas
 numpy
-sentence-transformers
+fastembed
 spotipy
 uvicorn
 fastapi

@@ -1,14 +1,14 @@
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 import numpy as np
 import ast
 from random import sample
+from fastembed import TextEmbedding
 
 # Read playlist data
 df = pd.read_csv("../Data/track_playlist_mapping.csv")
 
-# Initialize sentence transformer
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Initialize embedding model
+model = TextEmbedding()
 
 # Initialize features
 for i in range(1, 385):
@@ -31,7 +31,7 @@ for i, row in df.iterrows():
             playlist_titles = sample(playlist_titles, 8)
 
         # Get song vector as average vector of playlist titles, then add to features
-        song_vec = np.mean([model.encode(title) for title in playlist_titles], axis=0)
+        song_vec = np.mean(list(model.embed(playlist_titles)), axis=0)
         for j in range(1, 385):
             df.at[i, f"y{j}"] = song_vec[j-1]
 
