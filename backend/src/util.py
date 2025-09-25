@@ -1,26 +1,20 @@
-import pandas as pd
 import numpy as np
 import ast
 import os
 from fastembed import TextEmbedding
+from qdrant_client import QdrantClient
+import pandas as pd
+import dotenv
 
-model = TextEmbedding()
+dotenv.load_dotenv()
 
-current_script_dir = os.path.dirname(__file__)
-data_relative_path = os.path.join(current_script_dir, "Data", "fullycleaned_data.csv")
+embedding_model = TextEmbedding()
+client = QdrantClient(
+    url=os.environ.get("QDRANT_URL"),
+    api_key=os.environ.get("QDRANT_API"),
+)
+collection_name = "spotify_playlists"
 
-df = pd.read_csv(data_relative_path)
-features = [f"y{i}" for i in range(1, 385)]
-df[features] = df[features].astype("float32")
-
-feature_matrix = df[features].values
-feature_matrix = feature_matrix / np.linalg.norm(feature_matrix, axis=1, keepdims=True)
-
-
-# Efficient cosine similarity
-def cosine_sim(a, b):
-    a = a / np.linalg.norm(a)
-    return np.dot(b, a)
 
 def make_recommendations(vibe):
     """Generate song recommendations based on a vibe input.
@@ -31,31 +25,45 @@ def make_recommendations(vibe):
         pd.DataFrame: A DataFrame containing recommended songs sorted by similarity.
     """
 
-    # Get vector for inputted vibe
-    vibe_vector = list(model.embed(vibe))[0]
+    query_embedding = list(embedding_model.embed([f"query: {vibe}"]))[0]
 
-    # Calculate similarity between vibe vector and all songs' vectors
-    similarities = cosine_sim(vibe_vector, feature_matrix)
-    result_df = df.copy()
-    result_df['overall_similarity'] = similarities
+    # Search the Qdrant collection for similar embeddings
+    search_results = client.search(
+        collection_name=collection_name,
+        query_vector=query_embedding,
+        limit=200,
+        with_payload=True,  # Return the playlist metadata (title, id, etc.)
+    )
+
+    # Process and return the results
+    recommendations = [
+        {"name_artist": result.payload["name_artist"], "score": result.score, "genres": result.payload["genres"]}
+        for result in search_results
+    ]
+
+    result_df = pd.DataFrame(recommendations)
 
     # Apply boosts to genre-specific vibes
     vibe_lower = vibe.lower()
     genre_keywords = ['rock', 'pop', 'rap', 'country', 'indie', 'dance', 'metal', 'jazz', 'electronic']
     for genre in genre_keywords:
         if genre in vibe_lower:
-            result_df['overall_similarity'] += 0.3 * result_df['genres'].apply(
-                lambda x: genre in [g.lower() for g in ast.literal_eval(x)]
+            result_df['score'] += 0.3 * result_df['genres'].apply(
+                lambda x: genre in [g.lower() for g in x]
             )
     
     if 'lofi' in vibe_lower or 'study' in vibe_lower:
-        result_df['overall_similarity'] += 0.3 * result_df['genres'].apply(
-            lambda x: 'lofi' in [g.lower() for g in ast.literal_eval(x)]
+        result_df['score'] += 0.3 * result_df['genres'].apply(
+            lambda x: 'lofi' in [g.lower() for g in x]
         )
     else:
-        result_df['overall_similarity'] -= 0.3 * result_df['genres'].apply(
-            lambda x: 'lofi' in [g.lower() for g in ast.literal_eval(x)]
+        result_df['score'] -= 0.3 * result_df['genres'].apply(
+            lambda x: 'lofi' in [g.lower() for g in x]
         )
     
 
-    return result_df.sort_values('overall_similarity', ascending=False)[['name_artist', 'track_id']]
+    return result_df.sort_values('score', ascending=False)[['name_artist', 'score']]
+
+if __name__ == "__main__":
+    df = make_recommendations("chill")
+    print(df.head(10))
