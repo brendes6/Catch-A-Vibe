@@ -76,7 +76,7 @@ function App() {
             Catch A Vibe
           </Typography>
           <Typography variant="h5" color="text.secondary">
-            Input your "vibe" to get instant song recommendations!
+            Input your playlist title or "vibe" to get instant song recommendations!
           </Typography>
         </Box>
 
