@@ -1,7 +1,7 @@
 export const getRecs = async (vibe) => {
   try {
     const response = await fetch(
-      `https://catch-a-vibe-v2.onrender.com/recs?vibe_input=${encodeURIComponent(vibe)}`
+      `https://spotify-app-658487049469.us-central1.run.app/recs?vibe_input=${encodeURIComponent(vibe)}`
     );
 
     if (!response.ok) {
