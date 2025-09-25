@@ -8,6 +8,7 @@ import dotenv
 
 dotenv.load_dotenv()
 
+# Load in embedding model and client
 embedding_model = TextEmbedding()
 client = QdrantClient(
     url=os.environ.get("QDRANT_URL"),
@@ -25,6 +26,7 @@ def make_recommendations(vibe):
         pd.DataFrame: A DataFrame containing recommended songs sorted by similarity.
     """
 
+    # Embed query with FastEmbed
     query_embedding = list(embedding_model.embed([f"query: {vibe}"]))[0]
 
     # Search the Qdrant collection for similar embeddings
@@ -32,7 +34,7 @@ def make_recommendations(vibe):
         collection_name=collection_name,
         query_vector=query_embedding,
         limit=200,
-        with_payload=True,  # Return the playlist metadata (title, id, etc.)
+        with_payload=True,  
     )
 
     # Process and return the results
@@ -61,7 +63,7 @@ def make_recommendations(vibe):
             lambda x: 'lofi' in [g.lower() for g in x]
         )
     
-
+    # Return resultant dataframe
     return result_df.sort_values('score', ascending=False)[['name_artist', 'score']]
 
 if __name__ == "__main__":

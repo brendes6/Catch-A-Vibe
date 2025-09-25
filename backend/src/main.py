@@ -17,6 +17,14 @@ def root():
 
 @app.get("/recs")
 def recs(vibe_input):
+    """Generate song recommendations based on a vibe input.
+
+    Input:
+        vibe_input (str): A description of the desired vibe.
+    Output:
+        ret (dict): A dictionary containing the recommended songs.
+    """
+    # Call our FastEmbed-based recommendation engine
     result = make_recommendations(vibe=vibe_input)
 
     ret = {"songs":[]}
