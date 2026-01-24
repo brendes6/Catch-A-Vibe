@@ -15,6 +15,7 @@ dotenv.load_dotenv()
 client = QdrantClient(
     url=os.environ.get("QDRANT_URL"),
     api_key=os.environ.get("QDRANT_API"),
+    timeout=60,
 )
 
 
@@ -116,6 +117,7 @@ points = [
 # Upload the points to the collection
 
 for i in range(1, len(points), 100):
+    print(f"Uploading points {i} of {len(points)} - {i/len(points)*100}%")
     client.upsert(
         collection_name="spotify_playlists",
         wait=True,

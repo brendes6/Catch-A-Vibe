@@ -4,5 +4,5 @@ fastembed
 spotipy
 uvicorn
 fastapi
-qdrant-client
+qdrant-client==1.15.0
 dotenv
