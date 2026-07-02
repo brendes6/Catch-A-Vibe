@@ -1,17 +1,49 @@
-export const getRecs = async (vibe) => {
-  try {
-    const response = await fetch(
-      `https://spotify-app-658487049469.us-central1.run.app/recs?vibe_input=${encodeURIComponent(vibe)}`
-    );
+const API_BASE = 'http://127.0.0.1:8080';
 
-    if (!response.ok) {
-      throw new Error("API error: " + response.statusText);
-    }
+export const getRecs = async (query, direction = null, strength = 0.3) => {
+  const sessionId = localStorage.getItem('session_id');
 
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching prediction:", error);
-    return null;
+  const response = await fetch(`${API_BASE}/recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      session_id: sessionId,
+      direction,
+      strength,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('API error: ' + response.statusText);
   }
+
+  return await response.json();
+};
+
+export const loginSpotify = async () => {
+  const response = await fetch(`${API_BASE}/api/auth/login`);
+  const { url } = await response.json();
+  window.location.href = url;
+};
+
+export const savePlaylist = async (trackUris, name = 'Catch A Vibe Playlist') => {
+  const sessionId = localStorage.getItem('session_id');
+  if (!sessionId) throw new Error('Not logged in');
+
+  const response = await fetch(`${API_BASE}/api/save-playlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      track_uris: trackUris,
+      name,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to save playlist');
+  }
+
+  return await response.json();
 };
