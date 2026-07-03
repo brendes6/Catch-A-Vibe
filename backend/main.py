@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.auth import get_auth_url, exchange_code, build_taste_profile, save_playlist, sessions
+from auth import get_auth_url, exchange_code, build_taste_profile, save_playlist, sessions
 import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
