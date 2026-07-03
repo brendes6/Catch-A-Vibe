@@ -20,6 +20,14 @@ I used this foundation to build a recommendation service that provides song pick
  - 15% popularity score
  - 35% artist similarity/match ranking
 
+To prevent the final results from being dominated by a single artist or feeling repetitive, the top candidates from the composite ranking are passed through a final **Maximal Marginal Relevance (MMR)** reranking stage. Rather than just taking the top N scores, MMR iteratively selects songs by balancing their composite score against how similar they are to songs *already selected* for the playlist, so the algorithm actively favors sonic diversity over redundant near-duplicates. A hard artist cap (max 3 songs per artist) is also enforced during this pass.
+
+On top of retrieval, the app supports iterative refinement through a **Rocchio algorithm**-based relevance feedback loop. Users can like or dislike individual songs in their results, and clicking "Refine Vibe" recalculates the query vector by shifting it toward the mean embedding of liked songs and away from the mean embedding of disliked songs:
+
+$$\vec{q}_{new} = \vec{q}_{orig} + 0.5 \cdot \vec{mean}_{liked} - 0.5 \cdot \vec{mean}_{disliked}$$
+
+This lets users progressively steer recommendations toward exactly what they're looking for without needing to rewrite their original query.
+
 The project is a full-stack web application featuring the following tools to build it:
 
  - Frontend: React + Material UI for a clean, responsive interface
