@@ -15,46 +15,52 @@ import {
   Grid,
   Paper,
   ListItemText,
-  ToggleButton,
-  ToggleButtonGroup,
   Snackbar,
   Chip,
+  IconButton,
 } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import { getRecs, loginSpotify, savePlaylist } from './components/Call.jsx';
 import SpotifyCallback from './components/SpotifyCallback.jsx';
 
-// A dark theme for a better vibe
+// Clean, utilitarian dark theme
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',
-    primary: {
-      main: '#1DB954', // A Spotify-like green
-    },
-    background: {
-      default: '#121212',
-      paper: '#282828',
-    },
+    primary: { main: '#1DB954' },
+    background: { default: '#101010', paper: '#1A1A1A' },
   },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h2: { fontWeight: 800, letterSpacing: '-0.03em' },
+    h6: { fontWeight: 600 },
+  },
+  shape: { borderRadius: 8 },
 });
 
 function HomePage() {
   const [vibeQuery, setVibeQuery] = useState('');
+  const [lastSearchedVibe, setLastSearchedVibe] = useState('');
   const [songPredictions, setSongPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [direction, setDirection] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
+  
+  // Rocchio Feedback State
+  const [likedSongs, setLikedSongs] = useState([]);
+  const [dislikedSongs, setDislikedSongs] = useState([]);
 
   useEffect(() => {
     const sessionId = localStorage.getItem('session_id');
     setIsLoggedIn(!!sessionId);
   }, []);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  const handleSearch = async (e, isRefine = false) => {
+    if (e) e.preventDefault();
     if (!vibeQuery.trim()) {
       setError("Please enter a vibe!");
       return;
@@ -62,14 +68,31 @@ function HomePage() {
 
     setLoading(true);
     setError(null);
-    setSongPredictions(null);
+    
+    // Clear feedback if this is a fresh search, not a refinement
+    let currentLiked = likedSongs;
+    let currentDisliked = dislikedSongs;
+    
+    if (!isRefine) {
+      currentLiked = [];
+      currentDisliked = [];
+      setLikedSongs([]);
+      setDislikedSongs([]);
+      setSongPredictions(null);
+    }
 
     try {
-      const result = await getRecs(vibeQuery, direction);
+      const result = await getRecs(vibeQuery, currentLiked, currentDisliked);
       if (!result || !result.results || result.results.length === 0) {
         throw new Error("No songs found for this vibe. Try another one!");
       }
       setSongPredictions(result.results);
+      setLastSearchedVibe(vibeQuery);
+      // Clear feedback after a successful refinement so they can refine again from the new set
+      if (isRefine) {
+          setLikedSongs([]);
+          setDislikedSongs([]);
+      }
     } catch (err) {
       setError(err.message || "Failed to fetch recommendations. Please try again.");
     } finally {
@@ -78,11 +101,7 @@ function HomePage() {
   };
 
   const handleLogin = async () => {
-    try {
-      await loginSpotify();
-    } catch (err) {
-      setError('Failed to start Spotify login.');
-    }
+    try { await loginSpotify(); } catch (err) { setError('Failed to start Spotify login.'); }
   };
 
   const handleLogout = () => {
@@ -93,24 +112,16 @@ function HomePage() {
 
   const handleSavePlaylist = async () => {
     if (!songPredictions) return;
-
-    const trackUris = songPredictions
-      .filter((s) => s.track_uri)
-      .map((s) => s.track_uri);
-
+    const trackUris = songPredictions.filter((s) => s.track_uri).map((s) => s.track_uri);
     if (trackUris.length === 0) {
       setSnackbar({ open: true, message: 'No tracks with URIs to save.' });
       return;
     }
-
     setSaving(true);
     try {
       const result = await savePlaylist(trackUris, `Catch A Vibe: ${vibeQuery}`);
       if (result.playlist_url) {
-        setSnackbar({
-          open: true,
-          message: 'Playlist saved! Opening Spotify...',
-        });
+        setSnackbar({ open: true, message: 'Playlist saved! Opening Spotify...' });
         window.open(result.playlist_url, '_blank');
       } else {
         setSnackbar({ open: true, message: 'Failed to save playlist.' });
@@ -121,138 +132,156 @@ function HomePage() {
       setSaving(false);
     }
   };
+  
+  const toggleLike = (songId) => {
+      if (likedSongs.includes(songId)) {
+          setLikedSongs(likedSongs.filter(id => id !== songId));
+      } else {
+          setLikedSongs([...likedSongs, songId]);
+          setDislikedSongs(dislikedSongs.filter(id => id !== songId));
+      }
+  };
+
+  const toggleDislike = (songId) => {
+      if (dislikedSongs.includes(songId)) {
+          setDislikedSongs(dislikedSongs.filter(id => id !== songId));
+      } else {
+          setDislikedSongs([...dislikedSongs, songId]);
+          setLikedSongs(likedSongs.filter(id => id !== songId));
+      }
+  };
+
+  const hasFeedback = likedSongs.length > 0 || dislikedSongs.length > 0;
 
   return (
-    <>
-      <Box
-        sx={{
-          minHeight: '30vh',
-          width: '100vw',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: 1,
-        }}
-      >
-        {/* Spotify auth button */}
-        <Box sx={{ position: 'absolute', top: 16, right: 24 }}>
-          {isLoggedIn ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Chip label="Spotify Connected" color="primary" variant="outlined" />
-              <Button size="small" onClick={handleLogout} color="inherit">
-                Logout
-              </Button>
-            </Box>
-          ) : (
-            <Button variant="outlined" color="primary" onClick={handleLogin}>
-              Connect Spotify
-            </Button>
-          )}
-        </Box>
+    <Container maxWidth="lg" sx={{ py: 4, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        {isLoggedIn ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Chip label="Spotify Connected" color="primary" variant="outlined" size="small" />
+            <Button size="small" onClick={handleLogout} color="inherit">Logout</Button>
+          </Box>
+        ) : (
+          <Button variant="outlined" color="primary" size="small" onClick={handleLogin}>Connect Spotify</Button>
+        )}
+      </Box>
 
-        <Typography variant="h2" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
+      <Box sx={{ textAlign: 'center', mb: 6 }}>
+        <Typography variant="h2" component="h1" gutterBottom color="primary">
           Catch A Vibe
         </Typography>
-        <Typography variant="h5" color="text.secondary">
-          Input your playlist title or "vibe" to get instant song recommendations!
+        <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400 }}>
+          Vector Search Recommendation Engine
         </Typography>
       </Box>
 
-      <Box
-        component="form"
-        onSubmit={handleSearch}
-        sx={{
-          minHeight: '10vh',
-          width: '100vw',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: 2,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TextField
-            label="What's the vibe?"
-            variant="outlined"
-            value={vibeQuery}
-            onChange={(e) => setVibeQuery(e.target.value)}
-            disabled={loading}
-          />
-          <Button type="submit" variant="contained" size="large" disabled={loading}>
-            Get Recs
-          </Button>
-        </Box>
-
-        {/* Direction selector */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Steer:
-          </Typography>
-          <ToggleButtonGroup
-            value={direction}
-            exclusive
-            onChange={(e, val) => setDirection(val)}
-            size="small"
-          >
-            <ToggleButton value="energy">Energy ⚡</ToggleButton>
-            <ToggleButton value="mood">Mood 😊</ToggleButton>
-            <ToggleButton value="intensity">Intensity 🔥</ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
+      <Box component="form" onSubmit={(e) => handleSearch(e, false)} sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 4 }}>
+        <TextField
+          placeholder="e.g. late night driving, crying in bed, hype workout"
+          variant="outlined"
+          value={vibeQuery}
+          onChange={(e) => setVibeQuery(e.target.value)}
+          disabled={loading}
+          sx={{ width: '100%', maxWidth: 500 }}
+          InputProps={{ sx: { borderRadius: 2 } }}
+        />
+        <Button type="submit" variant="contained" size="large" disabled={loading || !vibeQuery.trim()} sx={{ px: 4, borderRadius: 2, fontWeight: 'bold' }}>
+          Search
+        </Button>
       </Box>
 
-      {loading && <CircularProgress sx={{ mx: 100, width: '100%', maxWidth: '1000px' }} />}
+      {loading && <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}><CircularProgress /></Box>}
 
       {error && (
-        <Alert severity="error" sx={{ mt: 2, justifyContent: 'center', width: '100%', maxWidth: '700px' }}>
-          {error}
-        </Alert>
+        <Alert severity="error" sx={{ mb: 4, mx: 'auto', maxWidth: 600 }}>{error}</Alert>
       )}
 
       {songPredictions && (
-        <>
-          {/* Save to Spotify button */}
-          {isLoggedIn && (
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-              <Button
-                variant="contained"
+        <Box sx={{ width: '100%' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, borderBottom: '1px solid #333', pb: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              Results for "{lastSearchedVibe}"
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button 
+                variant="outlined" 
                 color="primary"
-                onClick={handleSavePlaylist}
-                disabled={saving}
+                onClick={() => handleSearch(null, true)}
+                disabled={!hasFeedback || loading}
+                sx={{ 
+                  borderRadius: 2, 
+                  opacity: hasFeedback ? 1 : 0.5,
+                  transition: 'all 0.2s',
+                  borderWidth: 2,
+                  '&:hover': { borderWidth: 2 }
+                }}
               >
-                {saving ? 'Saving...' : 'Save to Spotify'}
+                Refine Vibe
               </Button>
+              {isLoggedIn && (
+                <Button variant="contained" color="primary" onClick={handleSavePlaylist} disabled={saving} sx={{ borderRadius: 2, fontWeight: 'bold' }}>
+                  {saving ? 'Saving...' : 'Save Playlist'}
+                </Button>
+              )}
             </Box>
-          )}
+          </Box>
 
-          <Grid
-            container
-            spacing={2}
-            sx={{
-              mt: 2,
-              width: '100%',
-              alignItems: 'center',
-              justifyContent: 'center',
-              maxWidth: '1900px',
-            }}
-          >
-            {songPredictions.map((song, index) => (
-              <Grid item xs={12} sm={6} key={`${song.track}-${index}`}>
-                <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', height: '100%' }}>
-                  <ListItemIcon>
-                    <MusicNoteIcon color="primary" />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={song.track}
-                    secondary={song.artist}
-                  />
-                </Paper>
-              </Grid>
-            ))}
+          <Grid container spacing={2}>
+            {songPredictions.map((song, index) => {
+              const isLiked = likedSongs.includes(song.song_id);
+              const isDisliked = dislikedSongs.includes(song.song_id);
+              
+              return (
+                <Grid item xs={12} sm={6} md={4} key={`${song.song_id}-${index}`}>
+                  <Paper 
+                    elevation={0}
+                    sx={{ 
+                      p: 2, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      height: '100%',
+                      border: '1px solid',
+                      borderColor: isLiked ? 'primary.main' : isDisliked ? 'error.main' : 'divider',
+                      backgroundColor: isLiked ? 'rgba(29, 185, 84, 0.08)' : isDisliked ? 'rgba(244, 67, 54, 0.05)' : 'background.paper',
+                      transition: 'all 0.2s ease',
+                      opacity: isDisliked ? 0.6 : 1,
+                      '&:hover': {
+                          borderColor: isLiked ? 'primary.main' : isDisliked ? 'error.main' : 'text.disabled'
+                      }
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40 }}>
+                      <MusicNoteIcon color={isLiked ? "primary" : "inherit"} sx={{ opacity: 0.7 }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={song.track}
+                      secondary={song.artist}
+                      primaryTypographyProps={{ fontWeight: 500, noWrap: true }}
+                      secondaryTypographyProps={{ noWrap: true }}
+                      sx={{ overflow: 'hidden' }}
+                    />
+                    <Box sx={{ display: 'flex', ml: 1 }}>
+                        <IconButton 
+                          size="small" 
+                          onClick={() => toggleLike(song.song_id)}
+                          color={isLiked ? "primary" : "default"}
+                        >
+                            <ThumbUpIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton 
+                          size="small" 
+                          onClick={() => toggleDislike(song.song_id)}
+                          color={isDisliked ? "error" : "default"}
+                        >
+                            <ThumbDownIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+                  </Paper>
+                </Grid>
+              );
+            })}
           </Grid>
-        </>
+        </Box>
       )}
 
       <Snackbar
@@ -261,7 +290,7 @@ function HomePage() {
         onClose={() => setSnackbar({ open: false, message: '' })}
         message={snackbar.message}
       />
-    </>
+    </Container>
   );
 }
 

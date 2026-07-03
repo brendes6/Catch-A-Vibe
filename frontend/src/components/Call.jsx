@@ -1,6 +1,6 @@
 const API_BASE = 'http://127.0.0.1:8080';
 
-export const getRecs = async (query, direction = null, strength = 0.3) => {
+export const getRecs = async (query, likedSongs = [], dislikedSongs = []) => {
   const sessionId = localStorage.getItem('session_id');
 
   const response = await fetch(`${API_BASE}/recommend`, {
@@ -9,8 +9,8 @@ export const getRecs = async (query, direction = null, strength = 0.3) => {
     body: JSON.stringify({
       query,
       session_id: sessionId,
-      direction,
-      strength,
+      liked_songs: likedSongs,
+      disliked_songs: dislikedSongs,
     }),
   });
 
