@@ -177,5 +177,5 @@ cython_debug/
 .streamlit/
 
 # All spotify mpd files
-*.json
+data-processing/mpd-dataset/*.json
 

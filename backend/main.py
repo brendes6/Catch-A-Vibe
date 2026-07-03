@@ -1,10 +1,10 @@
-from backend.directions import compute_directions
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.auth import get_auth_url, exchange_code, build_taste_profile, save_playlist, sessions
 import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from dotenv import load_dotenv
 import os
 import time
@@ -18,9 +18,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from qdrant_client import QdrantClient
-from fastembed import TextEmbedding
 
 qdrant_client = QdrantClient(
     url=os.getenv("QDRANT_URL"),
@@ -38,7 +35,7 @@ for field, schema in [("song_id", PayloadSchemaType.KEYWORD),
             field_schema=schema,
         )
     except Exception:
-        pass  # Index already exists
+        pass
 
 for text_field in ["artist", "track"]:
     try:
@@ -54,18 +51,19 @@ for text_field in ["artist", "track"]:
             ),
         )
     except Exception:
-        pass  # Index already exists
+        pass
 
 embedding_model = TextEmbedding()
 
-direction_vectors = compute_directions(embedding_model)
 
 @app.get("/api/auth/login")
 async def login():
+    """Return Spotify authorization URL"""
     return {"url": get_auth_url()}
 
 @app.post("/api/auth/callback")
 async def callback(body: dict):
+    """Handle Spotify callback and return session ID"""
     code = body["code"]
     session_id = exchange_code(code)
     taste_profile = build_taste_profile(session_id, qdrant_client)
@@ -76,7 +74,8 @@ async def callback(body: dict):
 
 @app.post("/recommend")
 async def recommend(body: dict):
-    from qdrant_client.http import models
+    """Return recommendations based on query"""
+
     query = body["query"]
     session_id = body.get("session_id")
     liked_songs = body.get("liked_songs", [])
@@ -87,7 +86,7 @@ async def recommend(body: dict):
         list(embedding_model.embed([query]))[0]
     )
     
-    # ── Apply Rocchio Feedback (Relevance Feedback) ──
+    # If recommendation based on liked/disliked songs, apply Rocchio feedback
     if liked_songs or disliked_songs:
         def fetch_song_vectors(song_ids):
             vecs = []
@@ -121,7 +120,7 @@ async def recommend(body: dict):
             
         query_vector = query_vector / np.linalg.norm(query_vector)
     
-    # ── Stage 1: Multi-Source Candidate Generation ──
+    # Generate candidates based on pure query and user personalization
     session_data = sessions.get(session_id, {}) if session_id else {}
     top_artist_names = set(session_data.get("top_artist_names", []))
     artist_vectors = session_data.get("artist_vectors", {})
@@ -132,7 +131,7 @@ async def recommend(body: dict):
         range=models.Range(gte=100)
     )
     
-    # Retrieval A: Pure vibe search
+    # Retrieval 1: Pure query embedding search
     result_a = qdrant_client.query_points(
         collection_name="spotify-mpd",
         query=query_list,
@@ -142,7 +141,7 @@ async def recommend(body: dict):
         with_vectors=True
     )
     
-    # Retrieval B: Personalized — same vibe, but only from user's top artists
+    # Retrieval 2: Personalized search filtering only based on user's top artists
     result_b_points = []
     if top_artist_names:
         result_b = qdrant_client.query_points(
@@ -164,7 +163,7 @@ async def recommend(body: dict):
         )
         result_b_points = result_b.points
     
-    # Merge and deduplicate by point ID
+    # Merge and deduplicate candidates retrieved
     seen_ids = set()
     candidates = []
     for point in list(result_a.points) + result_b_points:
@@ -172,22 +171,23 @@ async def recommend(body: dict):
             seen_ids.add(point.id)
             candidates.append(point)
     
-    # ── Stage 2: Composite Scoring with Artist Affinity ──
-    
+    # Composite Scoring based on query match, popularity, and personalization
     scored_candidates = []
     for c in candidates:
-        base_vibe_score = c.score  # Cosine similarity from Qdrant
+        base_vibe_score = c.score
         
-        # 1. Popularity (log-scaled)
+        # Score popularity by log of playlist count
         pop_count = c.payload.get("playlist_count", 1)
         pop_score = np.log1p(pop_count) / 10.0
         
-        # 2. Artist affinity — the key personalization signal
+        # Score artist affinity
         artist_boost = 0.0
         candidate_artist = c.payload.get("artist", "")
-        
+
+        # If an artist is in user's top 50 artists, boost score by 1.0
+        # Else, check if embedding is similar to any top artist embeddings
+        # via cosine similarity scale 0.0 -> 1.0
         if top_artist_names:
-            # Direct match: candidate IS one of the user's top artists
             if candidate_artist in top_artist_names:
                 artist_boost = 1.0
             elif artist_vectors and c.vector:
@@ -200,22 +200,22 @@ async def recommend(body: dict):
                 best_sim = max(artist_sims)
                 artist_boost = max(0.0, (best_sim - 0.6) / 0.4)
         
-        # Composite score
+        # Composite score based on 
+        # 50% query match, 15% popularity, 35% artist affinity
         if top_artist_names:
-            # Personalized: 50% vibe, 15% popularity, 35% artist affinity
             final_score = (0.50 * base_vibe_score +
                           0.15 * pop_score +
                           0.35 * artist_boost)
         else:
-            # Anonymous: 75% vibe, 25% popularity
+            # If no personalization available, use 75% query match and 25% popularity
             final_score = 0.75 * base_vibe_score + 0.25 * pop_score
             
         scored_candidates.append((c, final_score))
     
-    # ── Stage 3: MMR Diversity Selection ──
+    # MMR Diversity Selection
     # Instead of just taking top 20, iteratively select songs that are
     # both high-scoring AND different from songs already selected.
-    # λ controls relevance vs diversity tradeoff (1.0 = pure relevance, 0.0 = pure diversity)
+    # mmr_lambda controls relevance vs diversity tradeoff (1.0 = pure relevance, 0.0 = pure diversity)
     mmr_lambda = 0.7
     n_select = 20
     
@@ -229,7 +229,9 @@ async def recommend(body: dict):
     
     selected_indices = []
     remaining = list(range(len(scored_candidates)))
-    artist_counts = {}  # Cap per-artist to prevent repetition
+    
+    # Manually cap artist counts per playlist by 3
+    artist_counts = {}
     max_per_artist = 3
     
     for _ in range(min(n_select, len(scored_candidates))):
@@ -242,7 +244,7 @@ async def recommend(body: dict):
             if artist_counts.get(artist, 0) >= max_per_artist:
                 continue
             
-            relevance = scored_candidates[i][1]  # Composite score
+            relevance = scored_candidates[i][1]
             
             # Max similarity to any already-selected song
             if selected_indices:
