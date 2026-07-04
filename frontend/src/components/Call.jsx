@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8080';
+const API_BASE = 'https://spotify-app-658487049469.us-central1.run.app';
 
 export const getRecs = async (query, likedSongs = [], dislikedSongs = []) => {
   const sessionId = localStorage.getItem('session_id');
