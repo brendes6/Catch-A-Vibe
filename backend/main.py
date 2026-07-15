@@ -1,17 +1,95 @@
-from fastapi import FastAPI
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from auth import get_auth_url, exchange_code, build_taste_profile, save_playlist, sessions
 import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
+from qdrant_client.http.models import PayloadSchemaType, TextIndexParams, TokenizerType
 from dotenv import load_dotenv
-import os
-import time
+
+from schemas import (
+    AuthCallbackRequest,
+    AuthCallbackResponse,
+    HealthResponse,
+    LoginResponse,
+    RecommendRequest,
+    RecommendResponse,
+    SavePlaylistRequest,
+    SavePlaylistResponse,
+)
 
 load_dotenv()
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("catch_a_vibe")
+
+COLLECTION_NAME = "spotify-mpd"
+
+
+def ensure_payload_indexes(client: QdrantClient) -> None:
+    """Create the payload indexes needed for filtered search.
+
+    Idempotent: re-creating an existing index is a no-op error we can ignore,
+    so this is safe to run on every startup.
+    """
+    for field, schema in [("song_id", PayloadSchemaType.KEYWORD),
+                          ("playlist_count", PayloadSchemaType.INTEGER)]:
+        try:
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name=field,
+                field_schema=schema,
+            )
+        except Exception as exc:
+            logger.debug("Skipping payload index for %s: %s", field, exc)
+
+    for text_field in ["artist", "track"]:
+        try:
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name=text_field,
+                field_schema=TextIndexParams(
+                    type="text",
+                    tokenizer=TokenizerType.WORD,
+                    min_token_len=2,
+                    max_token_len=20,
+                    lowercase=True
+                ),
+            )
+        except Exception as exc:
+            logger.debug("Skipping text index for %s: %s", text_field, exc)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize heavy resources once on startup instead of at import time.
+
+    Loading the embedding model and reaching out to Qdrant at import made the
+    module impossible to import for tests without live credentials and slowed
+    cold starts. Doing it here keeps import side-effect free.
+    """
+    logger.info("Startup: connecting to Qdrant and loading embedding model")
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY"),
+    )
+    ensure_payload_indexes(client)
+    app.state.qdrant_client = client
+    app.state.embedding_model = TextEmbedding()
+    logger.info("Startup complete")
+    try:
+        yield
+    finally:
+        logger.info("Shutdown: closing Qdrant client")
+        client.close()
+
+
+app = FastAPI(title="Catch A Vibe API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,67 +97,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-qdrant_client = QdrantClient(
-    url=os.getenv("QDRANT_URL"),
-    api_key=os.getenv("QDRANT_API_KEY")
-)
 
-# Ensure payload indexes exist
-from qdrant_client.http.models import PayloadSchemaType, TextIndexParams, TokenizerType
-for field, schema in [("song_id", PayloadSchemaType.KEYWORD),
-                      ("playlist_count", PayloadSchemaType.INTEGER)]:
-    try:
-        qdrant_client.create_payload_index(
-            collection_name="spotify-mpd",
-            field_name=field,
-            field_schema=schema,
-        )
-    except Exception:
-        pass
-
-for text_field in ["artist", "track"]:
-    try:
-        qdrant_client.create_payload_index(
-            collection_name="spotify-mpd",
-            field_name=text_field,
-            field_schema=TextIndexParams(
-                type="text",
-                tokenizer=TokenizerType.WORD,
-                min_token_len=2,
-                max_token_len=20,
-                lowercase=True
-            ),
-        )
-    except Exception:
-        pass
-
-embedding_model = TextEmbedding()
+def get_qdrant_client(request: Request) -> QdrantClient:
+    """Dependency: the Qdrant client created during startup."""
+    return request.app.state.qdrant_client
 
 
-@app.get("/api/auth/login")
+def get_embedding_model(request: Request) -> TextEmbedding:
+    """Dependency: the embedding model loaded during startup."""
+    return request.app.state.embedding_model
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health(request: Request):
+    """Liveness/readiness probe for Cloud Run (no network calls)."""
+    ready = (
+        getattr(request.app.state, "embedding_model", None) is not None
+        and getattr(request.app.state, "qdrant_client", None) is not None
+    )
+    return HealthResponse(status="ok" if ready else "starting")
+
+
+@app.get("/api/auth/login", response_model=LoginResponse)
 async def login():
     """Return Spotify authorization URL"""
-    return {"url": get_auth_url()}
+    return LoginResponse(url=get_auth_url())
 
-@app.post("/api/auth/callback")
-async def callback(body: dict):
+
+@app.post("/api/auth/callback", response_model=AuthCallbackResponse)
+async def callback(
+    body: AuthCallbackRequest,
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+):
     """Handle Spotify callback and return session ID"""
-    code = body["code"]
-    session_id = exchange_code(code)
+    session_id = exchange_code(body.code)
     taste_profile = build_taste_profile(session_id, qdrant_client)
-    return {
-        "session_id": session_id,
-        "has_taste_profile": taste_profile is not None
-    }
+    return AuthCallbackResponse(
+        session_id=session_id,
+        has_taste_profile=taste_profile is not None,
+    )
 
-@app.post("/recommend")
-async def recommend(body: dict):
+@app.post("/recommend", response_model=RecommendResponse)
+async def recommend(
+    body: RecommendRequest,
+    qdrant_client: QdrantClient = Depends(get_qdrant_client),
+    embedding_model: TextEmbedding = Depends(get_embedding_model),
+):
     """Return recommendations based on query"""
 
-    query = body["query"]
-    session_id = body.get("session_id")
-    liked_songs = body.get("liked_songs", [])
-    disliked_songs = body.get("disliked_songs", [])
+    query = body.query
+    session_id = body.session_id
+    liked_songs = body.liked_songs
+    disliked_songs = body.disliked_songs
     
     # Embed query
     query_vector = np.array(
@@ -282,13 +351,12 @@ async def recommend(body: dict):
         ]
     }
 
-@app.post("/api/save-playlist")
-async def save_playlist_endpoint(body: dict):
-    session_id = body["session_id"]
-    track_uris = body["track_uris"]
-    name = body.get("name", "Catch A Vibe Playlist")
-    
-    url = save_playlist(session_id, track_uris, name)
+@app.post("/api/save-playlist", response_model=SavePlaylistResponse)
+async def save_playlist_endpoint(body: SavePlaylistRequest):
+    if body.session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    url = save_playlist(body.session_id, body.track_uris, body.name)
     if url is None:
-        return {"error": "Failed to save playlist"}
-    return {"playlist_url": url}
+        raise HTTPException(status_code=502, detail="Failed to save playlist to Spotify")
+    return SavePlaylistResponse(playlist_url=url)
