@@ -1,7 +1,10 @@
 import json
+import logging
 import os
-import numpy as np
+import hashlib
 from collections import defaultdict
+
+import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
@@ -9,19 +12,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("catch_a_vibe.data")
+
 DATA_DIR = "./mpd-dataset"
 BATCH_SIZE = 500
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "spotify-mpd")
 
-def load_slices(data_dir, max_slices=200):
+def load_slices(data_dir, max_slices=None):
     song_to_playlists = defaultdict(list)
     song_metadata = {}
 
     slice_files = sorted([
-        f for f in os.listdir(data_dir) 
+        f for f in os.listdir(data_dir)
         if f.endswith('.json')
     ])
-    
-    print(f"Processing {len(slice_files)} slices...")
+    if max_slices is not None:
+        slice_files = slice_files[:max_slices]
+
+    logger.info("Processing %d slices...", len(slice_files))
     
     for i, filename in enumerate(slice_files):
         with open(os.path.join(data_dir, filename)) as f:
@@ -46,8 +55,10 @@ def load_slices(data_dir, max_slices=200):
         del data
         
         if i % 20 == 0:
-            print(f"Slice {i+1}/{len(slice_files)} — "
-                  f"{len(song_to_playlists)} unique songs so far")
+            logger.info(
+                "Slice %d/%d — %d unique songs so far",
+                i + 1, len(slice_files), len(song_to_playlists),
+            )
     
     return song_to_playlists, song_metadata
 
@@ -61,8 +72,8 @@ def compute_song_vectors(song_to_playlists):
         for title in titles
     ))
     
-    print(f"Embedding {len(all_titles)} unique playlist titles...")
-    
+    logger.info("Embedding %d unique playlist titles...", len(all_titles))
+
     # Embed in batches
     title_to_embedding = {}
     titles_list = list(all_titles)
@@ -74,10 +85,10 @@ def compute_song_vectors(song_to_playlists):
             title_to_embedding[title] = np.array(emb)
         
         if i % 5000 == 0:
-            print(f"Embedded {i}/{len(titles_list)} titles")
+            logger.info("Embedded %d/%d titles", i, len(titles_list))
     
     # Compute song vectors
-    print("Computing song vectors...")
+    logger.info("Computing song vectors...")
     song_vectors = {}
     
     for song_id, playlist_titles in song_to_playlists.items():
@@ -87,33 +98,48 @@ def compute_song_vectors(song_to_playlists):
             vec = np.mean(embs, axis=0)
             song_vectors[song_id] = vec / np.linalg.norm(vec)
     
-    print(f"Computed {len(song_vectors)} song vectors")
+    logger.info("Computed %d song vectors", len(song_vectors))
     return song_vectors
 
-def upload_to_qdrant(song_vectors, song_metadata):
-    qdrant_url = os.getenv("QDRANT_URL")
-    qdrant_api_key = os.getenv("QDRANT_API_KEY")
-    
-    client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
-    
+def _stable_point_id(song_id: str) -> int:
+    """Deterministic 63-bit point id for a song.
+
+    Python's built-in hash() is salted per process (PYTHONHASHSEED), so the
+    same song got a different id on every run, which breaks idempotent
+    re-uploads (you'd insert duplicates instead of overwriting). Hashing with
+    md5 makes the id stable across runs.
+    """
+    digest = hashlib.md5(song_id.encode("utf-8")).hexdigest()
+    return int(digest[:16], 16) % (2**63)
+
+
+def upload_to_qdrant(song_vectors, song_metadata, song_to_playlists):
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY"),
+    )
+
     # Get vector dimension from first entry
     dim = len(next(iter(song_vectors.values())))
-    
-    # Recreate collection
-    client.recreate_collection(
-        collection_name=os.getenv("QDRANT_COLLECTION_NAME"),
-        vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
+
+    # (Re)create the collection. recreate_collection is deprecated, so we
+    # explicitly drop-if-exists then create.
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
     )
-    
+
     songs = list(song_vectors.items())
-    print(f"Uploading {len(songs)} songs to Qdrant...")
-    
+    logger.info("Uploading %d songs to Qdrant collection '%s'...", len(songs), COLLECTION_NAME)
+
     for i in range(0, len(songs), BATCH_SIZE):
         batch = songs[i:i+BATCH_SIZE]
-        
+
         points = [
             PointStruct(
-                id=abs(hash(song_id)) % (2**63),
+                id=_stable_point_id(song_id),
                 vector=vector.tolist(),
                 payload={
                     "song_id": song_id,
@@ -126,15 +152,15 @@ def upload_to_qdrant(song_vectors, song_metadata):
             )
             for song_id, vector in batch
         ]
-        
-        client.upsert(collection_name=os.getenv("QDRANT_COLLECTION_NAME"), points=points)
-        
+
+        client.upsert(collection_name=COLLECTION_NAME, points=points)
+
         if i % 5000 == 0:
-            print(f"Uploaded {i}/{len(songs)} songs")
-    
-    print("Done!")
+            logger.info("Uploaded %d/%d songs", i, len(songs))
+
+    logger.info("Done - uploaded %d songs to '%s'", len(songs), COLLECTION_NAME)
 
 if __name__ == "__main__":
     song_to_playlists, song_metadata = load_slices(DATA_DIR)
     song_vectors = compute_song_vectors(song_to_playlists)
-    upload_to_qdrant(song_vectors, song_metadata)
+    upload_to_qdrant(song_vectors, song_metadata, song_to_playlists)
