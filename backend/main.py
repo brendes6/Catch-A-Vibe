@@ -30,6 +30,21 @@ logger = logging.getLogger("catch_a_vibe")
 
 COLLECTION_NAME = "spotify-mpd"
 
+# Browser origins allowed to call this API. Defaults to list of allowed origins
+# if none in environment variables, the default list is used.
+DEFAULT_ALLOWED_ORIGINS = [
+    "https://catch-a-vibe-six.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+
+def get_allowed_origins() -> list[str]:
+    raw = os.getenv("ALLOWED_ORIGINS")
+    if raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return DEFAULT_ALLOWED_ORIGINS
+
 
 def ensure_payload_indexes(client: QdrantClient) -> None:
     """Create the payload indexes needed for filtered search.
@@ -92,7 +107,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Catch A Vibe API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
