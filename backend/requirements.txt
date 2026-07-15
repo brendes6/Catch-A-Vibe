@@ -1,7 +1,7 @@
-spotipy
-numpy
-python-dotenv
-qdrant-client
-fastapi
-uvicorn
-fastembed
+spotipy==2.26.0
+numpy==2.5.0
+python-dotenv==1.2.2
+qdrant-client==1.18.0
+fastapi==0.138.1
+uvicorn==0.49.0
+fastembed==0.8.0
