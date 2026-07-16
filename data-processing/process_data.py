@@ -3,6 +3,7 @@ import logging
 import os
 import hashlib
 from collections import defaultdict
+from typing import Optional
 
 import numpy as np
 from fastembed import TextEmbedding
@@ -19,7 +20,7 @@ DATA_DIR = "./mpd-dataset"
 BATCH_SIZE = 500
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "spotify-mpd")
 
-def load_slices(data_dir, max_slices=None):
+def load_slices(data_dir: str, max_slices: Optional[int] = None) -> tuple[dict[str, list[str]], dict[str, dict[str, str]]]:
     song_to_playlists = defaultdict(list)
     song_metadata = {}
 
@@ -62,7 +63,7 @@ def load_slices(data_dir, max_slices=None):
     
     return song_to_playlists, song_metadata
 
-def compute_song_vectors(song_to_playlists):
+def compute_song_vectors(song_to_playlists: dict[str, list[str]]) -> dict[str, np.ndarray]:
     model = TextEmbedding()
     
     # Get all unique playlist titles
@@ -104,16 +105,14 @@ def compute_song_vectors(song_to_playlists):
 def _stable_point_id(song_id: str) -> int:
     """Deterministic 63-bit point id for a song.
 
-    Python's built-in hash() is salted per process (PYTHONHASHSEED), so the
-    same song got a different id on every run, which breaks idempotent
-    re-uploads (you'd insert duplicates instead of overwriting). Hashing with
-    md5 makes the id stable across runs.
+    Hashing with md5 makes the id stable across runs and not seeded
+    per-process
     """
     digest = hashlib.md5(song_id.encode("utf-8")).hexdigest()
     return int(digest[:16], 16) % (2**63)
 
 
-def upload_to_qdrant(song_vectors, song_metadata, song_to_playlists):
+def upload_to_qdrant(song_vectors: dict[str, np.ndarray], song_metadata: dict[str, dict[str, str]], song_to_playlists: dict[str, list[str]]):
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -122,7 +121,7 @@ def upload_to_qdrant(song_vectors, song_metadata, song_to_playlists):
     # Get vector dimension from first entry
     dim = len(next(iter(song_vectors.values())))
 
-    # (Re)create the collection. recreate_collection is deprecated, so we
+    # Recreate the collection. recreate_collection is deprecated, so we
     # explicitly drop-if-exists then create.
     if client.collection_exists(COLLECTION_NAME):
         client.delete_collection(COLLECTION_NAME)

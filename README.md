@@ -1,40 +1,185 @@
-# Catch A Vibe – An NLP-Powered Personalized Playlist Generator
+# Natural Language Playlist Recommender
 
-## Project Overview
+**An NLP-powered playlist generator that turns a vibe (e.g. "late night drive", "hype workout mix") into personalized Spotify recommendations via vector search.**
 
-This project is a full-stack NLP-based web app that generates Spotify song recommendations based on a combination of user query embeddings, popularity and user personalization as part of a multi-stage recommendation pipeline. Users can authenticate with Spotify and type phrases like "late night drive", "hype workout mix", or "throwback party bangers" and quickly receive a list of songs that match the title the user inputs as well as their own personal taste.
+[![Live Demo](https://img.shields.io/badge/demo-live-1DB954)](https://catch-a-vibe-six.vercel.app/)
+![Python](https://img.shields.io/badge/python-3.11-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688)
+![Qdrant](https://img.shields.io/badge/Qdrant-vector%20db-DC244C)
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![Docker](https://img.shields.io/badge/Docker-2496ED)
+![Cloud Run](https://img.shields.io/badge/Google%20Cloud%20Run-4285F4)
 
-This project utilizes a wide variety of tools to deliver personalized recommendations. Spotify OAuth is used to pull data on which artists a user listens to often, which is eventually used as part of a multi-stage retrieval of songs for personalized recs. FastEmbed and Qdrant vector databases are used to embed playlist titles and reliably store+query embeddings. The database contains 600k+ songs-embedding associations. FastAPI, Docker and Google Cloud Run are used to keep the recommendation service up for the app to constantly service personalized recommendations.
+**Live app:** https://catch-a-vibe-six.vercel.app/
 
-## Motivation
+---
 
-My inspiration for this project came from a weakness I noticed in Spotify's song recommendations for newly created playlists. Often, when you create a playlist, the initial recommendations to add don't fully capture the vibe of the playlist based on the title. Thus, I had the idea to leverage NLP embeddings and vector database queries alongside the Spotify API for personalization to build an app that quickly matches playlist titles to personalized, vibe-based song recommendations.
+## Overview and Motivation
 
-## Tech Stack and Highlights
+The motivation behind this project is the fact that newly created Spotify playlists
+rarely have good recommendations based on the title and user listening data. I considered
+how this product could be mapped as a (song title) -> (list of songs) problem, and created
+this project. It maps free-text vibes to songs using semantic embeddings, as well as personalizing
+the recommendations to your own music taste.
 
-The foundation of this project is the Spotify Million Playlist Dataset (https://www.aicrowd.com/challenges/spotify-million-playlist-dataset-challenge), which is a dataset containing, as the name suggests, 1 million spotify playlists with associated data such as playlist title and a list of tracks. Using this dataset alongside the **FastEmbed** embedding model and a Qdrant vector database, I was able to process this dataset to create a mapping of songs directly to the **average embedding of playlist titles they appear on**. This embedding creates a relationship between a playlist title and the songs we can expect to appear on it.
+The core idea is a precomputed association between **playlist titles and the songs that
+appear on them**. Every song is represented by the *average embedding of the playlist
+titles it shows up on* across the subsampled Spotify Million Playlist Dataset (~600k songs). At query
+time, your phrase is embedded into the same space and matched against those song vectors
+through a multi-stage retrieval, scoring, and diversification pipeline.
 
-I used this foundation to build a recommendation service that provides song picks based on a multi-stage retrieval and ranking process. The first step is to pull candidates from the entire database based on the input query, and then also pull candidates from the database using the input query but also **filtered based on the user's top artists**. These candidates are merged and then passed into the second stage of the pipeline, which first provides a boost to popular songs (based on number of playlists they appear in on Spotify MPD Dataset), and then boosts songs that are either **directly from top user artists** or **share a very similar embedding to a user's top artists's average embedding**. For example, if Drake is in a user's top 50 artists, Drake songs get a flat 1.0 boost during reranking, whereas 21 Savage songs may get a 0.7 boost due to the average embeddings of both artists being similar. The final ranking is based on a composite scoring:
+## Architecture
 
- - 50% pure query embedding match
- - 15% popularity score
- - 35% artist similarity/match ranking
+```mermaid
+flowchart LR
+    subgraph Offline["Offline pipeline · data-processing"]
+        MPD["Spotify Million<br/>Playlist Dataset"] --> AGG["Aggregate songs →<br/>playlist titles"]
+        AGG --> EMB["Embed titles &<br/>average per song"]
+        EMB --> UP["Upsert vectors<br/>+ metadata"]
+    end
+    UP --> QD[("Qdrant<br/>vector DB")]
 
-To prevent the final results from being dominated by a single artist or feeling repetitive, the top candidates from the composite ranking are passed through a final **Maximal Marginal Relevance (MMR)** reranking stage. Rather than just taking the top N scores, MMR iteratively selects songs by balancing their composite score against how similar they are to songs *already selected* for the playlist, so the algorithm actively favors sonic diversity over redundant near-duplicates. A hard artist cap (max 3 songs per artist) is also enforced during this pass.
+    subgraph Online["Online serving"]
+        UI["React + MUI<br/>(Vercel)"] -->|query · feedback| API["FastAPI<br/>(Cloud Run)"]
+        API -->|vector search| QD
+        API <-->|OAuth · top artists · save playlist| SP["Spotify API"]
+    end
+```
 
-On top of retrieval, the app supports iterative refinement through a **Rocchio algorithm**-based relevance feedback loop. Users can like or dislike individual songs in their results, and clicking "Refine Vibe" recalculates the query vector by shifting it toward the mean embedding of liked songs and away from the mean embedding of disliked songs:
+- Offline (`data-processing/process_data.py`): reads MPD slices, builds a
+  `song → [playlist titles]` map, embeds every unique title once, averages titles per song
+  into a normalized vector, and upserts vectors + payload (artist, track, album, popularity)
+  into Qdrant with deterministic IDs (idempotent re-runs).
+- Online (`backend/`): a FastAPI service that embeds the query, retrieves and re-ranks
+  candidates from Qdrant, and integrates with the Spotify API for personalization and
+  playlist saving.
+
+## How recommendations work
+
+1. Embedding foundation. Each song's vector is the mean of the
+[`BAAI/bge-small-en-v1.5`](https://huggingface.co/BAAI/bge-small-en-v1.5) (384-d, via
+FastEmbed/ONNX) embeddings of every playlist title it appears on — encoding "what kind of
+playlist does this song belong on."
+
+2. Personalized taste profile. On Spotify login, the app pulls your top 50 artists and
+computes an average "artist vector" for each from their songs in Qdrant.
+
+3. Multi-stage retrieval.
+- *Stage A*: pure query-embedding search over popular songs (`playlist_count ≥ 100`).
+- *Stage B*: the same query search restricted to your top artists.
+
+Candidates are merged and deduplicated.
+
+**4. Composite scoring.** Each candidate is scored on:
+- **50%** query-embedding similarity
+- **15%** popularity (`log1p(playlist_count)`)
+- **35%** artist affinity — a flat boost for your top artists, or a soft cosine-similarity
+  boost for artists whose average vector is close to one of your top artists (e.g. if Drake
+  is a top artist, 21 Savage songs get a partial boost).
+
+(With no logged-in profile, scoring falls back to 75% query / 25% popularity.)
+
+**5. MMR diversification.** Instead of taking the top-N, a **Maximal Marginal Relevance
+(MMR)** pass (`λ = 0.7`) iteratively selects songs that balance score against similarity to
+already-selected songs, with a hard cap of 3 songs per artist - favoring a diverse set over
+near-duplicates.
+
+**6. Relevance feedback (Rocchio).** Users can like/dislike results and hit *Refine Vibe* to
+recompute the query vector toward liked songs and away from disliked ones:
 
 $$\vec{q}_{new} = \vec{q}_{orig} + 0.5 \cdot \vec{mean}_{liked} - 0.5 \cdot \vec{mean}_{disliked}$$
 
-This lets users progressively steer recommendations toward exactly what they're looking for without needing to rewrite their original query.
+Thus, the newly generated songs are shifted more towards the 'vibe' of songs the user likes, and 
+away from songs/vibes they dislike.
 
-The project is a full-stack web application featuring the following tools to build it:
+## Tech stack
 
- - Frontend: React + Material UI for a clean, responsive interface
- - Backend: FastAPI endpoints integrating with Spotify API and Qdrant
- - Embedding Model: FastEmbed (BAAI/bge-small-en-v1.5) embeddings of user input vs averaged playlist titles
- - Dataset: 600k+ songs mapped to playlist-level vibe embeddings in Qdrant
- - OAuth: Spotify OAuth2.0 used for authorization
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, Material UI (deployed on Vercel) |
+| API | FastAPI, Uvicorn, Pydantic |
+| Embeddings | FastEmbed — `BAAI/bge-small-en-v1.5` (384-d, ONNX) |
+| Vector DB | Qdrant (Qdrant Cloud) |
+| Auth / integration | Spotify OAuth 2.0 (spotipy) |
+| Infra | Docker, Google Cloud Run |
+| Data | Spotify Million Playlist Dataset, NumPy |
 
-## Try It Live
-https://catch-a-vibe-six.vercel.app/
+## Repository structure
+
+```
+Catch-A-Vibe/
+├── backend/               # FastAPI recommendation + auth service
+│   ├── main.py            # App, lifespan, endpoints, retrieval/scoring/MMR
+│   ├── auth.py            # Spotify OAuth, sessions, taste profiles
+│   ├── schemas.py         # Pydantic request/response models
+│   ├── Dockerfile
+│   └── requirements.txt
+├── data-processing/       # Offline pipeline: MPD → embeddings → Qdrant
+│   ├── process_data.py
+│   └── requirements.txt
+└── frontend/              # React + MUI single-page app
+    └── src/
+```
+
+## Running locally
+
+**Prerequisites:** Python 3.11+, Node 18+, a Qdrant instance (Qdrant Cloud free tier or
+local Docker), and a [Spotify developer app](https://developer.spotify.com/dashboard).
+
+### Backend API
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # fill in Spotify + Qdrant credentials
+uvicorn main:app --reload --port 8080
+```
+
+Interactive API docs are then available at `http://localhost:8080/docs`.
+
+### Data pipeline (one-time index build)
+
+```bash
+cd data-processing
+pip install -r requirements.txt
+cp .env.example .env
+# download MPD slices into ./mpd-dataset/ (*.json), then:
+python process_data.py
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+> The frontend points at the deployed Cloud Run API by default (`API_BASE` in
+> `src/components/Call.jsx` and `SpotifyCallback.jsx`). Point it at
+> `http://localhost:8080` to develop against a local backend.
+
+## API reference
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness/readiness probe |
+| `GET` | `/api/auth/login` | Returns the Spotify authorization URL |
+| `POST` | `/api/auth/callback` | Exchanges the OAuth code, builds a taste profile, returns a session |
+| `POST` | `/recommend` | Ranked recommendations for a query (+ optional like/dislike feedback) |
+| `POST` | `/api/save-playlist` | Saves the recommended tracks to the user's Spotify account |
+
+## Deployment
+
+- **Backend** — containerized (`backend/Dockerfile`) and deployed on **Google Cloud Run**.
+  The FastEmbed model is baked into the image to avoid a cold-start download.
+- **Frontend** — built with Vite and deployed on **Vercel**.
+- **Qdrant** — hosted on **Qdrant Cloud**.
+- **Config** — all credentials/URLs come from environment variables (see the `.env.example`
+  files). Allowed CORS origins are controlled by `ALLOWED_ORIGINS`.
+
+## Dataset & credits
+
+Built on the [Spotify Million Playlist Dataset](https://www.aicrowd.com/challenges/spotify-million-playlist-dataset-challenge)
+(AIcrowd), used for non-commercial/research purposes.
