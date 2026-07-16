@@ -22,6 +22,7 @@ from schemas import (
     SavePlaylistRequest,
     SavePlaylistResponse,
 )
+from recommendation import apply_rocchio, mmr_select, score_candidates
 
 load_dotenv()
 
@@ -42,7 +43,9 @@ DEFAULT_ALLOWED_ORIGINS = [
 def get_allowed_origins() -> list[str]:
     raw = os.getenv("ALLOWED_ORIGINS")
     if raw:
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        parsed = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        if parsed:
+            return parsed
     return DEFAULT_ALLOWED_ORIGINS
 
 
@@ -194,15 +197,7 @@ async def recommend(
         liked_vecs = fetch_song_vectors(liked_songs)
         disliked_vecs = fetch_song_vectors(disliked_songs)
         
-        # Rocchio formula weights
-        alpha, beta = 0.5, 0.5
-        
-        if liked_vecs:
-            query_vector = query_vector + alpha * np.mean(liked_vecs, axis=0)
-        if disliked_vecs:
-            query_vector = query_vector - beta * np.mean(disliked_vecs, axis=0)
-            
-        query_vector = query_vector / np.linalg.norm(query_vector)
+        query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
     
     # Generate candidates based on pure query and user personalization
     session_data = sessions.get(session_id, {}) if session_id else {}
@@ -255,103 +250,11 @@ async def recommend(
             seen_ids.add(point.id)
             candidates.append(point)
     
-    # Composite Scoring based on query match, popularity, and personalization
-    scored_candidates = []
-    for c in candidates:
-        base_vibe_score = c.score
-        
-        # Score popularity by log of playlist count
-        pop_count = c.payload.get("playlist_count", 1)
-        pop_score = np.log1p(pop_count) / 10.0
-        
-        # Score artist affinity
-        artist_boost = 0.0
-        candidate_artist = c.payload.get("artist", "")
-
-        # If an artist is in user's top 50 artists, boost score by 1.0
-        # Else, check if embedding is similar to any top artist embeddings
-        # via cosine similarity scale 0.0 -> 1.0
-        if top_artist_names:
-            if candidate_artist in top_artist_names:
-                artist_boost = 1.0
-            elif artist_vectors and c.vector:
-                # Soft match: candidate's vector is similar to a top artist's vector
-                c_vec = np.array(c.vector)
-                artist_sims = [
-                    np.dot(c_vec, np.array(av))
-                    for av in artist_vectors.values()
-                ]
-                best_sim = max(artist_sims)
-                artist_boost = max(0.0, (best_sim - 0.6) / 0.4)
-        
-        # Composite score based on 
-        # 50% query match, 15% popularity, 35% artist affinity
-        if top_artist_names:
-            final_score = (0.50 * base_vibe_score +
-                          0.15 * pop_score +
-                          0.35 * artist_boost)
-        else:
-            # If no personalization available, use 75% query match and 25% popularity
-            final_score = 0.75 * base_vibe_score + 0.25 * pop_score
-            
-        scored_candidates.append((c, final_score))
+    # Composite scoring: query match, popularity, and personalization
+    scored_candidates = score_candidates(candidates, top_artist_names, artist_vectors)
     
-    # MMR Diversity Selection
-    # Instead of just taking top 20, iteratively select songs that are
-    # both high-scoring AND different from songs already selected.
-    # mmr_lambda controls relevance vs diversity tradeoff (1.0 = pure relevance, 0.0 = pure diversity)
-    mmr_lambda = 0.7
-    n_select = 20
-    
-    # Pre-compute candidate vectors
-    candidate_vecs = []
-    for c, score in scored_candidates:
-        if c.vector:
-            candidate_vecs.append(np.array(c.vector))
-        else:
-            candidate_vecs.append(np.zeros(384))
-    
-    selected_indices = []
-    remaining = list(range(len(scored_candidates)))
-    
-    # Manually cap artist counts per playlist by 3
-    artist_counts = {}
-    max_per_artist = 3
-    
-    for _ in range(min(n_select, len(scored_candidates))):
-        best_idx = None
-        best_mmr = -float('inf')
-        
-        for i in remaining:
-            # Enforce artist cap
-            artist = scored_candidates[i][0].payload.get("artist", "")
-            if artist_counts.get(artist, 0) >= max_per_artist:
-                continue
-            
-            relevance = scored_candidates[i][1]
-            
-            # Max similarity to any already-selected song
-            if selected_indices:
-                max_sim = max(
-                    np.dot(candidate_vecs[i], candidate_vecs[j])
-                    for j in selected_indices
-                )
-            else:
-                max_sim = 0.0
-            
-            mmr_score = mmr_lambda * relevance - (1 - mmr_lambda) * max_sim
-            
-            if mmr_score > best_mmr:
-                best_mmr = mmr_score
-                best_idx = i
-        
-        if best_idx is not None:
-            selected_indices.append(best_idx)
-            remaining.remove(best_idx)
-            artist = scored_candidates[best_idx][0].payload.get("artist", "")
-            artist_counts[artist] = artist_counts.get(artist, 0) + 1
-    
-    reranked = [scored_candidates[i] for i in selected_indices]
+    # MMR diversity selection with a per-artist cap
+    reranked = mmr_select(scored_candidates)
     
     return {
         "results": [

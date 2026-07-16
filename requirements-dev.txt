@@ -1,0 +1,5 @@
+# Development / CI dependencies.
+# Installs the backend deps plus testing
+
+-r backend/requirements.txt
+pytest==9.1.1

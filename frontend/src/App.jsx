@@ -101,7 +101,7 @@ function HomePage() {
   };
 
   const handleLogin = async () => {
-    try { await loginSpotify(); } catch (err) { setError('Failed to start Spotify login.'); }
+    try { await loginSpotify(); } catch { setError('Failed to start Spotify login.'); }
   };
 
   const handleLogout = () => {
