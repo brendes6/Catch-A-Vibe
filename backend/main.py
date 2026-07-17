@@ -23,6 +23,12 @@ from schemas import (
     SavePlaylistResponse,
 )
 from recommendation import apply_rocchio, mmr_select, score_candidates
+from observability import (
+    PrometheusMiddleware,
+    configure_logging,
+    metrics_endpoint,
+    stage_timer,
+)
 
 load_dotenv()
 
@@ -91,6 +97,7 @@ async def lifespan(app: FastAPI):
     module impossible to import for tests without live credentials and slowed
     cold starts. Doing it here keeps import side-effect free.
     """
+    configure_logging()
     logger.info("Startup: connecting to Qdrant and loading embedding model")
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
@@ -108,12 +115,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Catch A Vibe API", lifespan=lifespan)
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus metrics scrape endpoint."""
+    return metrics_endpoint()
 
 
 def get_qdrant_client(request: Request) -> QdrantClient:
@@ -168,93 +182,94 @@ async def recommend(
     liked_songs = body.liked_songs
     disliked_songs = body.disliked_songs
     
-    # Embed query
-    query_vector = np.array(
-        list(embedding_model.embed([query]))[0]
-    )
+    with stage_timer("embed"):
+        # Embed query
+        query_vector = np.array(list(embedding_model.embed([query]))[0])
     
-    # If recommendation based on liked/disliked songs, apply Rocchio feedback
-    if liked_songs or disliked_songs:
-        def fetch_song_vectors(song_ids):
-            vecs = []
-            for sid in song_ids:
-                res = qdrant_client.query_points(
-                    collection_name="spotify-mpd",
-                    query=[0.0] * 384,
-                    query_filter=models.Filter(
-                        must=[models.FieldCondition(
-                            key="song_id",
-                            match=models.MatchValue(value=sid)
-                        )]
-                    ),
-                    with_vectors=True,
-                    limit=1
-                ).points
-                if res and res[0].vector:
-                    vecs.append(np.array(res[0].vector))
-            return vecs
+    with stage_timer("retrieve"):
+        # If recommendation based on liked/disliked songs, apply Rocchio feedback
+        if liked_songs or disliked_songs:
+            def fetch_song_vectors(song_ids):
+                vecs = []
+                for sid in song_ids:
+                    res = qdrant_client.query_points(
+                        collection_name="spotify-mpd",
+                        query=[0.0] * 384,
+                        query_filter=models.Filter(
+                            must=[models.FieldCondition(
+                                key="song_id",
+                                match=models.MatchValue(value=sid)
+                            )]
+                        ),
+                        with_vectors=True,
+                        limit=1
+                    ).points
+                    if res and res[0].vector:
+                        vecs.append(np.array(res[0].vector))
+                return vecs
             
-        liked_vecs = fetch_song_vectors(liked_songs)
-        disliked_vecs = fetch_song_vectors(disliked_songs)
+            liked_vecs = fetch_song_vectors(liked_songs)
+            disliked_vecs = fetch_song_vectors(disliked_songs)
         
-        query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
+            query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
     
-    # Generate candidates based on pure query and user personalization
-    session_data = sessions.get(session_id, {}) if session_id else {}
-    top_artist_names = set(session_data.get("top_artist_names", []))
-    artist_vectors = session_data.get("artist_vectors", {})
+        # Generate candidates based on pure query and user personalization
+        session_data = sessions.get(session_id, {}) if session_id else {}
+        top_artist_names = set(session_data.get("top_artist_names", []))
+        artist_vectors = session_data.get("artist_vectors", {})
     
-    query_list = query_vector.tolist()
-    pop_filter = models.FieldCondition(
-        key="playlist_count",
-        range=models.Range(gte=100)
-    )
+        query_list = query_vector.tolist()
+        pop_filter = models.FieldCondition(
+            key="playlist_count",
+            range=models.Range(gte=100)
+        )
     
-    # Retrieval 1: Pure query embedding search
-    result_a = qdrant_client.query_points(
-        collection_name="spotify-mpd",
-        query=query_list,
-        query_filter=models.Filter(must=[pop_filter]),
-        limit=30,
-        with_payload=True,
-        with_vectors=True
-    )
-    
-    # Retrieval 2: Personalized search filtering only based on user's top artists
-    result_b_points = []
-    if top_artist_names:
-        result_b = qdrant_client.query_points(
+        # Retrieval 1: Pure query embedding search
+        result_a = qdrant_client.query_points(
             collection_name="spotify-mpd",
             query=query_list,
-            query_filter=models.Filter(
-                must=[pop_filter],
-                should=[
-                    models.FieldCondition(
-                        key="artist",
-                        match=models.MatchText(text=name)
-                    )
-                    for name in top_artist_names
-                ]
-            ),
-            limit=20,
+            query_filter=models.Filter(must=[pop_filter]),
+            limit=30,
             with_payload=True,
             with_vectors=True
         )
-        result_b_points = result_b.points
     
-    # Merge and deduplicate candidates retrieved
-    seen_ids = set()
-    candidates = []
-    for point in list(result_a.points) + result_b_points:
-        if point.id not in seen_ids:
-            seen_ids.add(point.id)
-            candidates.append(point)
+        # Retrieval 2: Personalized search filtering only based on user's top artists
+        result_b_points = []
+        if top_artist_names:
+            result_b = qdrant_client.query_points(
+                collection_name="spotify-mpd",
+                query=query_list,
+                query_filter=models.Filter(
+                    must=[pop_filter],
+                    should=[
+                        models.FieldCondition(
+                            key="artist",
+                            match=models.MatchText(text=name)
+                        )
+                        for name in top_artist_names
+                    ]
+                ),
+                limit=20,
+                with_payload=True,
+                with_vectors=True
+            )
+            result_b_points = result_b.points
     
-    # Composite scoring: query match, popularity, and personalization
-    scored_candidates = score_candidates(candidates, top_artist_names, artist_vectors)
+        # Merge and deduplicate candidates retrieved
+        seen_ids = set()
+        candidates = []
+        for point in list(result_a.points) + result_b_points:
+            if point.id not in seen_ids:
+                seen_ids.add(point.id)
+                candidates.append(point)
     
-    # MMR diversity selection with a per-artist cap
-    reranked = mmr_select(scored_candidates)
+    with stage_timer("rank"):
+        # Composite scoring: query match, popularity, and personalization
+        scored_candidates = score_candidates(candidates, top_artist_names, artist_vectors)
+    
+        # MMR diversity selection with a per-artist cap
+        reranked = mmr_select(scored_candidates)
     
     return {
         "results": [

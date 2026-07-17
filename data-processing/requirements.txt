@@ -1,4 +1,4 @@
-numpy==2.5.0
+numpy==2.4.6
 fastembed==0.8.0
 qdrant-client==1.18.0
 python-dotenv==1.2.2

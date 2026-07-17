@@ -65,9 +65,9 @@ def test_artist_affinity_full_for_top_artist():
 
 
 def test_artist_affinity_soft_match_remap():
-    # cosine == SIM_FLOOR -> 0, cosine == 1 -> 1
+    # cosine == COSINE_FLOOR -> 0, cosine == 1 -> 1
     top = {"SomebodyElse"}
-    at_floor = rec.artist_affinity("Other", [rec.SIM_FLOOR, np.sqrt(1 - rec.SIM_FLOOR**2)],
+    at_floor = rec.artist_affinity("Other", [rec.COSINE_FLOOR, np.sqrt(1 - rec.COSINE_FLOOR**2)],
                                    top, {"a": [1.0, 0.0]})
     assert at_floor == pytest.approx(0.0, abs=1e-9)
     perfect = rec.artist_affinity("Other", [1.0, 0.0], top, {"a": [1.0, 0.0]})

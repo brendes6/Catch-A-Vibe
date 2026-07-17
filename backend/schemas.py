@@ -1,7 +1,6 @@
 """Pydantic request/response models for the Catch A Vibe API.
 
-Centralizing these gives us automatic request validation (malformed bodies
-return 422 instead of an unhandled KeyError -> 500) and self-documenting
+Centralizing these gives us automatic request validation and self-documenting
 responses in the generated OpenAPI schema.
 """
 
