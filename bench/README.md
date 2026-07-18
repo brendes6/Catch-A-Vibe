@@ -1,8 +1,8 @@
-# Load testing / benchmarking
+# Load testing
 
-This directory holds the load test used to measure `/recommend` latency and
-throughput, so the Chunk 2 (async/batched retrieval) and Chunk 3 (Redis cache)
-optimizations can be reported with real before vs after numbers.
+A small load test for `/recommend`, used as a basic quality check that the
+service stays responsive under concurrent traffic (latency + throughput). It's
+a sanity tool that ships with the repo, not the centerpiece of the project.
 
 ## Prerequisites
 
@@ -47,9 +47,8 @@ locust -f bench/locustfile.py --host http://localhost:8080 \
   --headless -u 10 -r 2 -t 60s --csv bench/results/before
 ```
 
-The `--csv` flag writes `*_stats.csv` with p50/p95/p99 and RPS. Save the
-`before` run, apply an optimization, then re-run with `--csv bench/results/after`
-and diff the percentiles.
+The `--csv` flag writes `*_stats.csv` with p50/p95/p99 and RPS if you want to
+keep a record of a run.
 
 ## Reading the results
 
@@ -58,7 +57,7 @@ and diff the percentiles.
 - Cross-check against `/metrics`:
   - `http_request_duration_seconds` — request latency histogram.
   - `recommend_stage_duration_seconds{stage="embed|retrieve|rank"}` — where the
-    time goes. This is what pinpoints retrieval as the bottleneck.
+    time goes across the pipeline stages.
 
 ```bash
 curl -s localhost:8080/metrics | grep recommend_stage_duration_seconds

@@ -190,26 +190,32 @@ async def recommend(
         # If recommendation based on liked/disliked songs, apply Rocchio feedback
         if liked_songs or disliked_songs:
             def fetch_song_vectors(song_ids):
-                vecs = []
-                for sid in song_ids:
-                    res = qdrant_client.query_points(
-                        collection_name="spotify-mpd",
-                        query=[0.0] * 384,
-                        query_filter=models.Filter(
-                            must=[models.FieldCondition(
-                                key="song_id",
-                                match=models.MatchValue(value=sid)
-                            )]
-                        ),
-                        with_vectors=True,
-                        limit=1
-                    ).points
-                    if res and res[0].vector:
-                        vecs.append(np.array(res[0].vector))
-                return vecs
+                """Fetch stored vectors for song_ids in ONE Qdrant call.
+
+                Returns {song_id: vector}.
+                """
+                if not song_ids:
+                    return {}
+                points, _ = qdrant_client.scroll(
+                    collection_name="spotify-mpd",
+                    scroll_filter=models.Filter(
+                        must=[models.FieldCondition(
+                            key="song_id",
+                            match=models.MatchAny(any=list(song_ids))
+                        )]
+                    ),
+                    with_vectors=True,
+                    limit=len(song_ids),
+                )
+                return {
+                    p.payload.get("song_id"): np.array(p.vector)
+                    for p in points
+                    if p.vector is not None
+                }
             
-            liked_vecs = fetch_song_vectors(liked_songs)
-            disliked_vecs = fetch_song_vectors(disliked_songs)
+            vec_by_id = fetch_song_vectors(list(liked_songs) + list(disliked_songs))
+            liked_vecs = [vec_by_id[s] for s in liked_songs if s in vec_by_id]
+            disliked_vecs = [vec_by_id[s] for s in disliked_songs if s in vec_by_id]
         
             query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
     
