@@ -11,14 +11,11 @@ import numpy as np
 from dotenv import load_dotenv
 from qdrant_client import models
 
+from redis_store import session_store
+
 load_dotenv()
 
 logger = logging.getLogger("catch_a_vibe")
-
-# Simple in-memory session store.
-# TODO: replace with Redis so sessions survive restarts and can be
-# shared across multiple instances.
-sessions: Dict[str, Dict[str, Any]] = {}
 
 SPOTIFY_SCOPE = "user-top-read user-library-read playlist-modify-public"
 
@@ -26,7 +23,7 @@ def _build_oauth() -> SpotifyOAuth:
     """Build a SpotifyOAuth client from environment configuration.
 
     Uses an in-memory cache handler so tokens are never written to a local
-    .cache file on the server; we persist them ourselves in `sessions`.
+    .cache file on the server; we persist them ourselves in the session store.
     """
     return SpotifyOAuth(
         client_id=os.getenv("SPOTIFY_CLIENT_ID"),
@@ -51,11 +48,11 @@ def exchange_code(code: str) -> str:
     token_info = oauth.cache_handler.get_cached_token()
 
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {
+    session_store.set(session_id, {
         "access_token": token_info["access_token"],
         "refresh_token": token_info["refresh_token"],
         "expires_at": token_info["expires_at"],
-    }
+    })
     return session_id
 
 
@@ -67,7 +64,7 @@ def _get_access_token(session_id: str) -> str:
     login (e.g. saving a playlist) failed with a 401. This refreshes the token
     on demand and updates the session in place.
     """
-    session = sessions.get(session_id)
+    session = session_store.get(session_id)
     if not session:
         raise ValueError("Session not found")
 
@@ -78,6 +75,7 @@ def _get_access_token(session_id: str) -> str:
         # Spotify only sometimes returns a rotated refresh token.
         if token_info.get("refresh_token"):
             session["refresh_token"] = token_info["refresh_token"]
+        session_store.set(session_id, session)
         logger.info("Refreshed Spotify access token")
 
     return session["access_token"]
@@ -133,9 +131,11 @@ def build_taste_profile(session_id: str, qdrant_client) -> Dict[str, Any]:
         except Exception:
             continue
     
-    # Store everything in the session
-    sessions[session_id]["top_artist_names"] = list(top_artist_names)
-    sessions[session_id]["artist_vectors"] = artist_vectors
+    # Persist the taste profile back to the session
+    session = session_store.get(session_id) or {}
+    session["top_artist_names"] = list(top_artist_names)
+    session["artist_vectors"] = artist_vectors
+    session_store.set(session_id, session)
     
     # Log number of artist matches
     logger.info(

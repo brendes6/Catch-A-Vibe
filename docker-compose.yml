@@ -1,20 +1,18 @@
 # Local full-stack for development: the FastAPI backend + a Qdrant instance.
-#
-# Notes:
-#   - The Qdrant container starts EMPTY. Run the data pipeline
-#     (data-processing/process_data.py, pointed at this Qdrant) to populate the
-#     "spotify-mpd" collection before /recommend returns results. /health and
-#     /docs work immediately.
-#   - Spotify OAuth endpoints need credentials; put them in backend/.env
-#     (see backend/.env.example). They are optional for the recommend flow.
+
 services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
     ports:
-      - "6333:6333"   # REST / gRPC HTTP
-      - "6334:6334"   # gRPC
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
   api:
     build: ./backend
@@ -23,12 +21,14 @@ services:
     environment:
       # Override any cloud QDRANT_URL from .env so we talk to the local instance.
       QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:3000
     env_file:
       - path: backend/.env
         required: false
     depends_on:
       - qdrant
+      - redis
 
 volumes:
   qdrant_storage:

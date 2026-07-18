@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from auth import get_auth_url, exchange_code, build_taste_profile, save_playlist, sessions
+from auth import get_auth_url, exchange_code, build_taste_profile, save_playlist
 import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
@@ -23,6 +23,7 @@ from schemas import (
     SavePlaylistResponse,
 )
 from recommendation import apply_rocchio, mmr_select, score_candidates
+from redis_store import session_store
 from observability import (
     PrometheusMiddleware,
     configure_logging,
@@ -181,7 +182,7 @@ async def recommend(
     session_id = body.session_id
     liked_songs = body.liked_songs
     disliked_songs = body.disliked_songs
-    
+
     with stage_timer("embed"):
         # Embed query
         query_vector = np.array(list(embedding_model.embed([query]))[0])
@@ -220,7 +221,7 @@ async def recommend(
             query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
     
         # Generate candidates based on pure query and user personalization
-        session_data = sessions.get(session_id, {}) if session_id else {}
+        session_data = (session_store.get(session_id) or {}) if session_id else {}
         top_artist_names = set(session_data.get("top_artist_names", []))
         artist_vectors = session_data.get("artist_vectors", {})
     
@@ -292,7 +293,7 @@ async def recommend(
 
 @app.post("/api/save-playlist", response_model=SavePlaylistResponse)
 async def save_playlist_endpoint(body: SavePlaylistRequest):
-    if body.session_id not in sessions:
+    if not session_store.exists(body.session_id):
         raise HTTPException(status_code=404, detail="Session not found")
 
     url = save_playlist(body.session_id, body.track_uris, body.name)
