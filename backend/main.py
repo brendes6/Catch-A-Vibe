@@ -22,7 +22,7 @@ from schemas import (
     SavePlaylistRequest,
     SavePlaylistResponse,
 )
-from recommendation import apply_rocchio, mmr_select, score_candidates
+from recommendation import mmr_select, score_candidates
 from redis_store import session_store
 from observability import (
     PrometheusMiddleware,
@@ -59,8 +59,8 @@ def get_allowed_origins() -> list[str]:
 def ensure_payload_indexes(client: QdrantClient) -> None:
     """Create the payload indexes needed for filtered search.
 
-    Idempotent: re-creating an existing index is a no-op error we can ignore,
-    so this is safe to run on every startup.
+    Schema-based indexes are either set or updated on each call,
+    called on each server startup.
     """
     for field, schema in [("song_id", PayloadSchemaType.KEYWORD),
                           ("playlist_count", PayloadSchemaType.INTEGER)]:
@@ -94,9 +94,8 @@ def ensure_payload_indexes(client: QdrantClient) -> None:
 async def lifespan(app: FastAPI):
     """Initialize heavy resources once on startup instead of at import time.
 
-    Loading the embedding model and reaching out to Qdrant at import made the
-    module impossible to import for tests without live credentials and slowed
-    cold starts. Doing it here keeps import side-effect free.
+    Loads embedding model and starts Qdrant client only on app startup,
+    allowing for simpler testing and faster cold starts.
     """
     configure_logging()
     logger.info("Startup: connecting to Qdrant and loading embedding model")
@@ -180,46 +179,12 @@ async def recommend(
 
     query = body.query
     session_id = body.session_id
-    liked_songs = body.liked_songs
-    disliked_songs = body.disliked_songs
 
     with stage_timer("embed"):
         # Embed query
         query_vector = np.array(list(embedding_model.embed([query]))[0])
     
     with stage_timer("retrieve"):
-        # If recommendation based on liked/disliked songs, apply Rocchio feedback
-        if liked_songs or disliked_songs:
-            def fetch_song_vectors(song_ids):
-                """Fetch stored vectors for song_ids in ONE Qdrant call.
-
-                Returns {song_id: vector}.
-                """
-                if not song_ids:
-                    return {}
-                points, _ = qdrant_client.scroll(
-                    collection_name="spotify-mpd",
-                    scroll_filter=models.Filter(
-                        must=[models.FieldCondition(
-                            key="song_id",
-                            match=models.MatchAny(any=list(song_ids))
-                        )]
-                    ),
-                    with_vectors=True,
-                    limit=len(song_ids),
-                )
-                return {
-                    p.payload.get("song_id"): np.array(p.vector)
-                    for p in points
-                    if p.vector is not None
-                }
-            
-            vec_by_id = fetch_song_vectors(list(liked_songs) + list(disliked_songs))
-            liked_vecs = [vec_by_id[s] for s in liked_songs if s in vec_by_id]
-            disliked_vecs = [vec_by_id[s] for s in disliked_songs if s in vec_by_id]
-        
-            query_vector = apply_rocchio(query_vector, liked_vecs, disliked_vecs)
-    
         # Generate candidates based on pure query and user personalization
         session_data = (session_store.get(session_id) or {}) if session_id else {}
         top_artist_names = set(session_data.get("top_artist_names", []))

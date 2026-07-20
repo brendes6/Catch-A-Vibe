@@ -30,21 +30,6 @@ N_SELECT = 20
 MAX_PER_ARTIST = 3
 
 
-def apply_rocchio(query_vector, liked_vecs, disliked_vecs, alpha=0.5, beta=0.5):
-    """Shift the query vector toward liked songs and away from disliked ones.
-
-    Implements the Rocchio relevance-feedback update and re-normalizes the
-    result so it stays comparable to the unit-length song vectors.
-    """
-    q = np.asarray(query_vector, dtype=float)
-    if len(liked_vecs) > 0:
-        q = q + alpha * np.mean(liked_vecs, axis=0)
-    if len(disliked_vecs) > 0:
-        q = q - beta * np.mean(disliked_vecs, axis=0)
-    norm = np.linalg.norm(q)
-    return q / norm if norm else q
-
-
 def popularity_score(playlist_count: int) -> float:
     """Diminishing-returns popularity score from a song's playlist count."""
     return float(np.log1p(playlist_count) / 10.0)

@@ -10,8 +10,6 @@ from pydantic import BaseModel, Field
 class RecommendRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Free-text vibe/playlist title")
     session_id: str | None = None
-    liked_songs: list[str] = Field(default_factory=list)
-    disliked_songs: list[str] = Field(default_factory=list)
 
 
 class SongResult(BaseModel):

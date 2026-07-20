@@ -1,6 +1,6 @@
-"""Redis-backed session store.
+"""Redis-based session store.
 
-Sessions hold Spotify tokens plus the derived taste profile. Backing them with
+Sessions hold Spotify tokens plus the derived taste profile. Storing them with
 Redis lets them survive restarts and be shared across instances.
 
 If REDIS_URL is unset (local dev, tests, CI) the store falls back to an
@@ -23,7 +23,7 @@ SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))
 _SESSION_PREFIX = "session:"
 
 
-# --- Session store ----------------------------------------------------------
+# Session store
 
 class InMemorySessionStore:
     """Process-local fallback used when REDIS_URL is not configured.
@@ -67,7 +67,7 @@ class RedisSessionStore:
         return bool(self._client.exists(_SESSION_PREFIX + session_id))
 
 
-# --- Wiring -----------------------------------------------------------------
+# Wiring
 
 def _make_redis_client():
     url = os.getenv("REDIS_URL")

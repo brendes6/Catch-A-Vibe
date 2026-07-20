@@ -22,8 +22,8 @@ SPOTIFY_SCOPE = "user-top-read user-library-read playlist-modify-public"
 def _build_oauth() -> SpotifyOAuth:
     """Build a SpotifyOAuth client from environment configuration.
 
-    Uses an in-memory cache handler so tokens are never written to a local
-    .cache file on the server; we persist them ourselves in the session store.
+    Use Spotipy in-memory cache handler to persist tokens in our
+    session store in memory.
     """
     return SpotifyOAuth(
         client_id=os.getenv("SPOTIFY_CLIENT_ID"),
@@ -42,8 +42,7 @@ def get_auth_url() -> str:
 def exchange_code(code: str) -> str:
     """Exchange the authorization code for a session id, storing tokens."""
     oauth = _build_oauth()
-    # as_dict=False avoids a deprecation warning; the full token payload
-    # (including refresh_token and expires_at) is read back from the cache.
+
     oauth.get_access_token(code, as_dict=False, check_cache=False)
     token_info = oauth.cache_handler.get_cached_token()
 
@@ -59,10 +58,9 @@ def exchange_code(code: str) -> str:
 def _get_access_token(session_id: str) -> str:
     """Return a valid access token for the session, refreshing if needed.
 
-    Spotify access tokens expire after ~1 hour. Previously the stored
-    refresh_token was never used, so any request made more than an hour after
-    login (e.g. saving a playlist) failed with a 401. This refreshes the token
-    on demand and updates the session in place.
+    If the request is made >1 hour after the token was created, we use
+    the refresh token (refresh_token) to retrieve new tokens for the user
+    and store them in the session.
     """
     session = session_store.get(session_id)
     if not session:
@@ -72,7 +70,8 @@ def _get_access_token(session_id: str) -> str:
         token_info = _build_oauth().refresh_access_token(session["refresh_token"])
         session["access_token"] = token_info["access_token"]
         session["expires_at"] = token_info["expires_at"]
-        # Spotify only sometimes returns a rotated refresh token.
+
+        # If new refresh token is given, update
         if token_info.get("refresh_token"):
             session["refresh_token"] = token_info["refresh_token"]
         session_store.set(session_id, session)
@@ -82,7 +81,7 @@ def _get_access_token(session_id: str) -> str:
 
 
 def _spotify_client(session_id: str) -> spotipy.Spotify:
-    """Return a Spotify client backed by a valid (auto-refreshed) token."""
+    """Return a Spotify client backed by a valid token."""
     return spotipy.Spotify(auth=_get_access_token(session_id))
 
 def build_taste_profile(session_id: str, qdrant_client) -> Dict[str, Any]:
