@@ -12,10 +12,8 @@ def test_recommend_request_rejects_empty_query():
         schemas.RecommendRequest(query="")
 
 
-def test_recommend_request_defaults_to_empty_lists():
+def test_recommend_request_defaults():
     req = schemas.RecommendRequest(query="late night drive")
-    assert req.liked_songs == []
-    assert req.disliked_songs == []
     assert req.session_id is None
 
 

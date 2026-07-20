@@ -1,6 +1,6 @@
 # Natural Language Playlist Recommender
 
-**An NLP-powered playlist generator that turns a vibe (e.g. "late night drive", "hype workout mix") into personalized Spotify recommendations via vector search.**
+**An NLP-powered playlist generator that turns a playlist title (e.g. "late night drive", "hype workout mix") into personalized Spotify recommendations via vector search.**
 
 [![Live Demo](https://img.shields.io/badge/demo-live-1DB954)](https://catch-a-vibe-six.vercel.app/)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
@@ -18,7 +18,7 @@
 
 The motivation behind this project is the fact that newly created Spotify playlists
 rarely have good recommendations based on the title and user listening data. I considered
-how this product could be mapped as a (song title) -> (list of songs) problem, and created
+how this feature could be mapped as a (song title) -> (list of songs) problem, which led me to creating
 this project. It maps free-text vibes to songs using semantic embeddings, as well as personalizing
 the recommendations to your own music taste.
 
@@ -40,7 +40,7 @@ flowchart LR
     UP --> QD[("Qdrant<br/>vector DB")]
 
     subgraph Online["Online serving"]
-        UI["React + MUI<br/>(Vercel)"] -->|query · feedback| API["FastAPI<br/>(Cloud Run)"]
+        UI["React + MUI<br/>(Vercel)"] -->|query| API["FastAPI<br/>(Cloud Run)"]
         API -->|vector search| QD
         API <-->|OAuth · top artists · save playlist| SP["Spotify API"]
     end
@@ -58,7 +58,7 @@ flowchart LR
 
 1. Embedding foundation. Each song's vector is the mean of the
 [`BAAI/bge-small-en-v1.5`](https://huggingface.co/BAAI/bge-small-en-v1.5) (384-d, via
-FastEmbed/ONNX) embeddings of every playlist title it appears on — encoding "what kind of
+FastEmbed/ONNX) embeddings of every playlist title it appears on, which encodes "what kind of
 playlist does this song belong on."
 
 2. Personalized taste profile. On Spotify login, the app pulls your top 50 artists and
@@ -81,16 +81,8 @@ Candidates are merged and deduplicated.
 
 **5. MMR diversification.** Instead of taking the top-N, a **Maximal Marginal Relevance
 (MMR)** pass (`λ = 0.7`) iteratively selects songs that balance score against similarity to
-already-selected songs, with a hard cap of 3 songs per artist - favoring a diverse set over
+already-selected songs, with a hard cap of 3 songs per artist, pushing playlist generation towards a diverse set over
 near-duplicates.
-
-**6. Relevance feedback (Rocchio).** Users can like/dislike results and hit *Refine Vibe* to
-recompute the query vector toward liked songs and away from disliked ones:
-
-$$\vec{q}_{new} = \vec{q}_{orig} + 0.5 \cdot \vec{mean}_{liked} - 0.5 \cdot \vec{mean}_{disliked}$$
-
-Thus, the newly generated songs are shifted more towards the 'vibe' of songs the user likes, and 
-away from songs/vibes they dislike.
 
 ## Tech stack
 
@@ -112,8 +104,13 @@ Catch-A-Vibe/
 │   ├── main.py            # App, lifespan, endpoints, retrieval/scoring/MMR
 │   ├── auth.py            # Spotify OAuth, sessions, taste profiles
 │   ├── schemas.py         # Pydantic request/response models
+│   ├── observability.py   # Prometheus observability logging
+│   ├── redis_store.py     # Redis-based session store
 │   ├── Dockerfile
 │   └── requirements.txt
+├── tests/                 # API/schema/observability tests
+├── bench/                 # Locust load testing for recommendation API
+│   └── locustfile.py      # Locust load testing implementation
 ├── data-processing/       # Offline pipeline: MPD → embeddings → Qdrant
 │   ├── process_data.py
 │   └── requirements.txt
@@ -167,7 +164,7 @@ npm run dev
 | `GET` | `/health` | Liveness/readiness probe |
 | `GET` | `/api/auth/login` | Returns the Spotify authorization URL |
 | `POST` | `/api/auth/callback` | Exchanges the OAuth code, builds a taste profile, returns a session |
-| `POST` | `/recommend` | Ranked recommendations for a query (+ optional like/dislike feedback) |
+| `POST` | `/recommend` | Ranked recommendations for a free-text vibe query |
 | `POST` | `/api/save-playlist` | Saves the recommended tracks to the user's Spotify account |
 
 ## Deployment

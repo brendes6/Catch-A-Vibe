@@ -22,30 +22,6 @@ class FakePoint:
         }
 
 
-# Rocchio
-
-def test_apply_rocchio_moves_toward_liked_and_normalizes():
-    q = np.array([1.0, 0.0])
-    liked = [np.array([0.0, 1.0])]
-    out = rec.apply_rocchio(q, liked, [])
-    assert out[1] > 0.0  # shifted toward the liked direction
-    assert np.isclose(np.linalg.norm(out), 1.0)
-
-
-def test_apply_rocchio_moves_away_from_disliked():
-    q = np.array([1.0, 1.0])
-    out = rec.apply_rocchio(q, [], [np.array([0.0, 1.0])])
-    # Away from +y means the y component shrinks relative to x.
-    assert out[0] > out[1]
-    assert np.isclose(np.linalg.norm(out), 1.0)
-
-
-def test_apply_rocchio_no_feedback_just_normalizes():
-    q = np.array([3.0, 4.0])
-    out = rec.apply_rocchio(q, [], [])
-    assert np.allclose(out, [0.6, 0.8])
-
-
 # popularity
 
 def test_popularity_score_matches_formula_and_is_monotonic():
