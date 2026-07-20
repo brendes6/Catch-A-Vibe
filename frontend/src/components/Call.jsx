@@ -1,6 +1,6 @@
 const API_BASE = 'https://spotify-app-658487049469.us-central1.run.app';
 
-export const getRecs = async (query, likedSongs = [], dislikedSongs = []) => {
+export const getRecs = async (query) => {
   const sessionId = localStorage.getItem('session_id');
 
   const response = await fetch(`${API_BASE}/recommend`, {
@@ -9,8 +9,6 @@ export const getRecs = async (query, likedSongs = [], dislikedSongs = []) => {
     body: JSON.stringify({
       query,
       session_id: sessionId,
-      liked_songs: likedSongs,
-      disliked_songs: dislikedSongs,
     }),
   });
 

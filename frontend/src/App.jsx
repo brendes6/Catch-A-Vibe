@@ -17,11 +17,8 @@ import {
   ListItemText,
   Snackbar,
   Chip,
-  IconButton,
 } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
-import ThumbUpIcon from '@mui/icons-material/ThumbUp';
-import ThumbDownIcon from '@mui/icons-material/ThumbDown';
 import { getRecs, loginSpotify, savePlaylist } from './components/Call.jsx';
 import SpotifyCallback from './components/SpotifyCallback.jsx';
 
@@ -49,17 +46,13 @@ function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
-  
-  // Rocchio Feedback State
-  const [likedSongs, setLikedSongs] = useState([]);
-  const [dislikedSongs, setDislikedSongs] = useState([]);
 
   useEffect(() => {
     const sessionId = localStorage.getItem('session_id');
     setIsLoggedIn(!!sessionId);
   }, []);
 
-  const handleSearch = async (e, isRefine = false) => {
+  const handleSearch = async (e) => {
     if (e) e.preventDefault();
     if (!vibeQuery.trim()) {
       setError("Please enter a vibe!");
@@ -68,31 +61,15 @@ function HomePage() {
 
     setLoading(true);
     setError(null);
-    
-    // Clear feedback if this is a fresh search, not a refinement
-    let currentLiked = likedSongs;
-    let currentDisliked = dislikedSongs;
-    
-    if (!isRefine) {
-      currentLiked = [];
-      currentDisliked = [];
-      setLikedSongs([]);
-      setDislikedSongs([]);
-      setSongPredictions(null);
-    }
+    setSongPredictions(null);
 
     try {
-      const result = await getRecs(vibeQuery, currentLiked, currentDisliked);
+      const result = await getRecs(vibeQuery);
       if (!result || !result.results || result.results.length === 0) {
         throw new Error("No songs found for this vibe. Try another one!");
       }
       setSongPredictions(result.results);
       setLastSearchedVibe(vibeQuery);
-      // Clear feedback after a successful refinement so they can refine again from the new set
-      if (isRefine) {
-          setLikedSongs([]);
-          setDislikedSongs([]);
-      }
     } catch (err) {
       setError(err.message || "Failed to fetch recommendations. Please try again.");
     } finally {
@@ -132,26 +109,6 @@ function HomePage() {
       setSaving(false);
     }
   };
-  
-  const toggleLike = (songId) => {
-      if (likedSongs.includes(songId)) {
-          setLikedSongs(likedSongs.filter(id => id !== songId));
-      } else {
-          setLikedSongs([...likedSongs, songId]);
-          setDislikedSongs(dislikedSongs.filter(id => id !== songId));
-      }
-  };
-
-  const toggleDislike = (songId) => {
-      if (dislikedSongs.includes(songId)) {
-          setDislikedSongs(dislikedSongs.filter(id => id !== songId));
-      } else {
-          setDislikedSongs([...dislikedSongs, songId]);
-          setLikedSongs(likedSongs.filter(id => id !== songId));
-      }
-  };
-
-  const hasFeedback = likedSongs.length > 0 || dislikedSongs.length > 0;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -175,7 +132,7 @@ function HomePage() {
         </Typography>
       </Box>
 
-      <Box component="form" onSubmit={(e) => handleSearch(e, false)} sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 4 }}>
+      <Box component="form" onSubmit={handleSearch} sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 4 }}>
         <TextField
           placeholder="e.g. late night driving, crying in bed, hype workout"
           variant="outlined"
@@ -203,21 +160,6 @@ function HomePage() {
               Results for "{lastSearchedVibe}"
             </Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button 
-                variant="outlined" 
-                color="primary"
-                onClick={() => handleSearch(null, true)}
-                disabled={!hasFeedback || loading}
-                sx={{ 
-                  borderRadius: 2, 
-                  opacity: hasFeedback ? 1 : 0.5,
-                  transition: 'all 0.2s',
-                  borderWidth: 2,
-                  '&:hover': { borderWidth: 2 }
-                }}
-              >
-                Refine Vibe
-              </Button>
               {isLoggedIn && (
                 <Button variant="contained" color="primary" onClick={handleSavePlaylist} disabled={saving} sx={{ borderRadius: 2, fontWeight: 'bold' }}>
                   {saving ? 'Saving...' : 'Save Playlist'}
@@ -227,11 +169,7 @@ function HomePage() {
           </Box>
 
           <Grid container spacing={2}>
-            {songPredictions.map((song, index) => {
-              const isLiked = likedSongs.includes(song.song_id);
-              const isDisliked = dislikedSongs.includes(song.song_id);
-              
-              return (
+            {songPredictions.map((song, index) => (
                 <Grid item xs={12} sm={6} md={4} key={`${song.song_id}-${index}`}>
                   <Paper 
                     elevation={0}
@@ -241,17 +179,16 @@ function HomePage() {
                       alignItems: 'center', 
                       height: '100%',
                       border: '1px solid',
-                      borderColor: isLiked ? 'primary.main' : isDisliked ? 'error.main' : 'divider',
-                      backgroundColor: isLiked ? 'rgba(29, 185, 84, 0.08)' : isDisliked ? 'rgba(244, 67, 54, 0.05)' : 'background.paper',
+                      borderColor: 'divider',
+                      backgroundColor: 'background.paper',
                       transition: 'all 0.2s ease',
-                      opacity: isDisliked ? 0.6 : 1,
                       '&:hover': {
-                          borderColor: isLiked ? 'primary.main' : isDisliked ? 'error.main' : 'text.disabled'
+                          borderColor: 'text.disabled'
                       }
                     }}
                   >
                     <ListItemIcon sx={{ minWidth: 40 }}>
-                      <MusicNoteIcon color={isLiked ? "primary" : "inherit"} sx={{ opacity: 0.7 }} />
+                      <MusicNoteIcon sx={{ opacity: 0.7 }} />
                     </ListItemIcon>
                     <ListItemText
                       primary={song.track}
@@ -260,26 +197,9 @@ function HomePage() {
                       secondaryTypographyProps={{ noWrap: true }}
                       sx={{ overflow: 'hidden' }}
                     />
-                    <Box sx={{ display: 'flex', ml: 1 }}>
-                        <IconButton 
-                          size="small" 
-                          onClick={() => toggleLike(song.song_id)}
-                          color={isLiked ? "primary" : "default"}
-                        >
-                            <ThumbUpIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton 
-                          size="small" 
-                          onClick={() => toggleDislike(song.song_id)}
-                          color={isDisliked ? "error" : "default"}
-                        >
-                            <ThumbDownIcon fontSize="small" />
-                        </IconButton>
-                    </Box>
                   </Paper>
                 </Grid>
-              );
-            })}
+            ))}
           </Grid>
         </Box>
       )}
