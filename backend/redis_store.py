@@ -14,11 +14,13 @@ import logging
 import os
 import time
 from typing import Any, Dict, Optional
+from dotenv import load_dotenv
 
 logger = logging.getLogger("catch_a_vibe")
 
 # Sessions get a sliding TTL (refreshed on every write) so active users persist
 # while abandoned sessions age out.
+load_dotenv()  # load .env for local dev and tests
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))
 
 _SESSION_PREFIX = "session:"
