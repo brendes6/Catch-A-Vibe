@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Box, Typography, CircularProgress } from '@mui/material';
 
-const API_BASE = 'https://spotify-app-658487049469.us-central1.run.app';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 function SpotifyCallback() {
   const [status, setStatus] = useState('Connecting to Spotify...');

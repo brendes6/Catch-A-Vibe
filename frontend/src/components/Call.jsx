@@ -1,4 +1,4 @@
-const API_BASE = 'https://spotify-app-658487049469.us-central1.run.app';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export const getRecs = async (query) => {
   const sessionId = localStorage.getItem('session_id');
