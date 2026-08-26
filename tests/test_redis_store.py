@@ -24,6 +24,9 @@ class FakeRedis:
     def exists(self, key):
         return 1 if key in self.store else 0
 
+    def getdel(self, key):
+        return self.store.pop(key, None)
+
 
 def test_inmemory_session_roundtrip():
     s = InMemorySessionStore()
@@ -53,3 +56,12 @@ def test_redis_session_roundtrip_and_prefix_and_ttl():
     assert s.exists("sid") is True
     assert s.get("missing") is None
     assert s.exists("missing") is False
+
+
+def test_redis_consume_is_one_time_and_prefixed():
+    fake = FakeRedis()
+    s = RedisSessionStore(fake)
+    s.set_with_ttl("oauth-state:abc", {"state": "abc"}, 600)
+
+    assert s.consume("oauth-state:abc") is True
+    assert s.consume("oauth-state:abc") is False
