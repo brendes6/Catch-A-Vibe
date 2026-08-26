@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger("catch_a_vibe")
@@ -45,6 +46,13 @@ class InMemorySessionStore:
     def exists(self, session_id: str) -> bool:
         return session_id in self._data
 
+    def set_with_ttl(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+        self._data[key] = {**data, "_expires_at": time.time() + ttl_seconds}
+
+    def consume(self, key: str) -> bool:
+        value = self._data.pop(key, None)
+        return value is not None and value.get("_expires_at", 0) >= time.time()
+
 
 class RedisSessionStore:
     """Session store persisted in Redis with a sliding TTL."""
@@ -65,6 +73,17 @@ class RedisSessionStore:
 
     def exists(self, session_id: str) -> bool:
         return bool(self._client.exists(_SESSION_PREFIX + session_id))
+
+    def set_with_ttl(self, key: str, data: Dict[str, Any], ttl_seconds: int) -> None:
+        self._client.set(
+            _SESSION_PREFIX + key,
+            json.dumps(data),
+            ex=ttl_seconds,
+        )
+
+    def consume(self, key: str) -> bool:
+        # GETDEL makes validation and one-time consumption atomic in Redis.
+        return self._client.getdel(_SESSION_PREFIX + key) is not None
 
 
 # Wiring

@@ -2,16 +2,24 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from auth import get_auth_url, exchange_code, build_taste_profile, save_playlist
+from auth import (
+    get_auth_url,
+    exchange_code,
+    build_taste_profile,
+    save_playlist,
+    validate_oauth_state,
+)
 import numpy as np
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import PayloadSchemaType, TextIndexParams, TokenizerType
-from dotenv import load_dotenv
-
 from schemas import (
     AuthCallbackRequest,
     AuthCallbackResponse,
@@ -30,8 +38,6 @@ from observability import (
     metrics_endpoint,
     stage_timer,
 )
-
-load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("catch_a_vibe")
@@ -162,6 +168,9 @@ async def callback(
     qdrant_client: QdrantClient = Depends(get_qdrant_client),
 ):
     """Handle Spotify callback and return session ID"""
+    if not validate_oauth_state(body.state):
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
     session_id = exchange_code(body.code)
     taste_profile = build_taste_profile(session_id, qdrant_client)
     return AuthCallbackResponse(

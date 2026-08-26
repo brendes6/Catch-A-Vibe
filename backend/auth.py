@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 import logging
+import secrets
 
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -18,6 +19,8 @@ load_dotenv()
 logger = logging.getLogger("catch_a_vibe")
 
 SPOTIFY_SCOPE = "user-top-read user-library-read playlist-modify-public"
+OAUTH_STATE_TTL_SECONDS = 10 * 60
+OAUTH_STATE_PREFIX = "oauth-state:"
 
 def _build_oauth() -> SpotifyOAuth:
     """Build a SpotifyOAuth client from environment configuration.
@@ -35,8 +38,19 @@ def _build_oauth() -> SpotifyOAuth:
 
 
 def get_auth_url() -> str:
-    """Get url to send to frontend for Spotify OAuth"""
-    return _build_oauth().get_authorize_url()
+    """Get a Spotify OAuth URL with a short-lived, one-time CSRF state."""
+    state = secrets.token_urlsafe(32)
+    session_store.set_with_ttl(
+        OAUTH_STATE_PREFIX + state,
+        {"state": state},
+        OAUTH_STATE_TTL_SECONDS,
+    )
+    return _build_oauth().get_authorize_url(state=state)
+
+
+def validate_oauth_state(state: str) -> bool:
+    """Atomically validate and consume a pending OAuth state value."""
+    return session_store.consume(OAUTH_STATE_PREFIX + state)
 
 
 def exchange_code(code: str) -> str:

@@ -7,16 +7,22 @@ function SpotifyCallback() {
   const [status, setStatus] = useState('Connecting to Spotify...');
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code');
-    if (!code) {
-      setStatus('No authorization code found.');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (params.get('error')) {
+      setStatus('Spotify login was cancelled.');
+      return;
+    }
+    if (!code || !state) {
+      setStatus('Invalid Spotify authorization response.');
       return;
     }
 
     fetch(`${API_BASE}/api/auth/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, state }),
     })
       .then((res) => {
         if (!res.ok) throw new Error('Auth failed');

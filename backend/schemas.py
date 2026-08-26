@@ -26,6 +26,7 @@ class RecommendResponse(BaseModel):
 
 class AuthCallbackRequest(BaseModel):
     code: str = Field(..., min_length=1, description="Spotify OAuth authorization code")
+    state: str = Field(..., min_length=1, description="One-time OAuth CSRF state")
 
 
 class AuthCallbackResponse(BaseModel):
