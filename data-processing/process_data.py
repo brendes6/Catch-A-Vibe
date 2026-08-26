@@ -4,6 +4,8 @@ import os
 import hashlib
 from collections import defaultdict
 from typing import Optional
+import argparse
+import sys
 
 import numpy as np
 from fastembed import TextEmbedding
@@ -112,7 +114,7 @@ def _stable_point_id(song_id: str) -> int:
     return int(digest[:16], 16) % (2**63)
 
 
-def upload_to_qdrant(song_vectors: dict[str, np.ndarray], song_metadata: dict[str, dict[str, str]], song_to_playlists: dict[str, list[str]]):
+def upload_to_qdrant(song_vectors: dict[str, np.ndarray], song_metadata: dict[str, dict[str, str]], song_to_playlists: dict[str, list[str]], recreate: bool = False):
     client = QdrantClient(
         url=os.getenv("QDRANT_URL"),
         api_key=os.getenv("QDRANT_API_KEY"),
@@ -124,6 +126,9 @@ def upload_to_qdrant(song_vectors: dict[str, np.ndarray], song_metadata: dict[st
     # Recreate the collection. recreate_collection is deprecated, so we
     # explicitly drop-if-exists then create.
     if client.collection_exists(COLLECTION_NAME):
+        if not recreate:
+            raise RuntimeError(f"Collection '{COLLECTION_NAME}' already exists. Use --recreate to delete and rebuild it.")
+        
         client.delete_collection(COLLECTION_NAME)
     client.create_collection(
         collection_name=COLLECTION_NAME,
@@ -159,7 +164,18 @@ def upload_to_qdrant(song_vectors: dict[str, np.ndarray], song_metadata: dict[st
 
     logger.info("Done - uploaded %d songs to '%s'", len(songs), COLLECTION_NAME)
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Delete and rebuild the existing Qdrant collection",
+    )
+    return parser.parse_args()
+
 if __name__ == "__main__":
+    args = parse_args()
+
     song_to_playlists, song_metadata = load_slices(DATA_DIR)
     song_vectors = compute_song_vectors(song_to_playlists)
-    upload_to_qdrant(song_vectors, song_metadata, song_to_playlists)
+    upload_to_qdrant(song_vectors, song_metadata, song_to_playlists, recreate=args.recreate)
