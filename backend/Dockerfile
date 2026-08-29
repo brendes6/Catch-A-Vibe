@@ -7,7 +7,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download the fastembed model so it's baked into the image
-# (avoids ~100MB download on every Cloud Run cold start)
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding()"
 
 COPY . .

@@ -1,20 +1,19 @@
 # Load testing
 
 A small load test for `/recommend`, used as a basic quality check that the
-service stays responsive under concurrent traffic (latency + throughput). It's
-a sanity tool that ships with the repo, not the centerpiece of the project.
+service stays responsive under concurrent traffic (latency + throughput).
 
 ## Prerequisites
 
-The benchmark is only meaningful against a populated Qdrant collection — an
-empty collection returns instantly and tells you nothing. Bring up the local
-stack and load a subset of the dataset first.
+The Qdrant collection needs to be populated before the locust test is ran, otherwise requests
+will instantly return and provide no insight. Thus, bring up the local stack and load
+the dataset into the Qdrant database before running the test.
 
 ```bash
 # 1. Start the API + Qdrant locally
 docker compose up -d --build
 
-# 2. Populate Qdrant with a subset of the MPD (adjust max_slices for size/speed).
+# 2. Populate Qdrant with the MPD.
 #    Point the pipeline at the local Qdrant and run it. From data-processing/:
 QDRANT_URL=http://localhost:6333 python process_data.py   # uses ./mpd-dataset
 
@@ -22,9 +21,6 @@ QDRANT_URL=http://localhost:6333 python process_data.py   # uses ./mpd-dataset
 curl -s localhost:8080/health
 ```
 
-> The pipeline reads slices from `data-processing/mpd-dataset/`. Use a handful of
-> slices for a quick run; use more for a scale test. Record how many playlists /
-> songs you loaded so the benchmark is reproducible.
 
 ## Install
 

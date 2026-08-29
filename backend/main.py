@@ -54,6 +54,7 @@ DEFAULT_ALLOWED_ORIGINS = [
 
 
 def get_allowed_origins() -> list[str]:
+    """Get allowed origins overrides from env var, or return default list"""
     raw = os.getenv("ALLOWED_ORIGINS")
     if raw:
         parsed = [origin.strip() for origin in raw.split(",") if origin.strip()]

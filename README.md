@@ -2,6 +2,10 @@
 
 **An NLP-powered playlist generator that turns a playlist title (e.g. "late night drive", "hype workout mix") into personalized Spotify recommendations via vector search.**
 
+[![CI](https://github.com/brendes6/Catch-A-Vibe/actions/workflows/ci.yml/badge.svg)](https://github.com/brendes6/Catch-A-Vibe/actions/workflows/ci.yml)
+
+
+
 [![Live Demo](https://img.shields.io/badge/demo-live-1DB954)](https://catch-a-vibe-six.vercel.app/)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688)
