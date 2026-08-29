@@ -128,7 +128,7 @@ function HomePage() {
           Catch A Vibe
         </Typography>
         <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400 }}>
-          Vector Search Recommendation Engine
+          A fast, personalized playlist recommendation engine
         </Typography>
       </Box>
 

@@ -16,6 +16,8 @@
 
 **Live app:** https://catch-a-vibe-six.vercel.app/
 
+![Catch A Vibe demo](docs/demo.gif)
+
 ---
 
 ## Overview and Motivation
