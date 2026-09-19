@@ -48,6 +48,7 @@ COLLECTION_NAME = "spotify-mpd"
 # if none in environment variables, the default list is used.
 DEFAULT_ALLOWED_ORIGINS = [
     "https://catch-a-vibe-six.vercel.app",
+    "https://music.brendandesjardins.fyi",
     "http://localhost:5173",
     "http://localhost:3000",
 ]
