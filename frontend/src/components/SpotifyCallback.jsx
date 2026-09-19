@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import Footer from './layout/Footer.jsx';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 function SpotifyCallback() {
-  const [status, setStatus] = useState('Connecting to Spotify...');
+  const [status, setStatus] = useState('Connecting to Spotify…');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -30,11 +30,8 @@ function SpotifyCallback() {
       })
       .then((data) => {
         localStorage.setItem('session_id', data.session_id);
-        localStorage.setItem(
-          'has_taste_profile',
-          String(data.has_taste_profile)
-        );
-        setStatus('Connected! Redirecting...');
+        localStorage.setItem('has_taste_profile', String(data.has_taste_profile));
+        setStatus('Connected! Redirecting…');
         window.location.href = '/';
       })
       .catch((err) => {
@@ -44,19 +41,13 @@ function SpotifyCallback() {
   }, []);
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-        gap: 2,
-      }}
-    >
-      <CircularProgress color="primary" />
-      <Typography variant="h6">{status}</Typography>
-    </Box>
+    <div className="site-shell">
+      <main className="main-content callback-page" id="main" aria-live="polite">
+        <p className="eyebrow">Spotify connection</p>
+        <h1 className="page-title">{status}</h1>
+      </main>
+      <Footer />
+    </div>
   );
 }
 
