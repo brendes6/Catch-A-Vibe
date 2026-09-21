@@ -14,7 +14,7 @@
 ![Docker](https://img.shields.io/badge/Docker-2496ED)
 ![Cloud Run](https://img.shields.io/badge/Google%20Cloud%20Run-4285F4)
 
-**Live app:** https://catch-a-vibe-six.vercel.app/
+**Live app:** https://music.brendandesjardins.fyi/
 
 ![Catch A Vibe demo](docs/demo.gif)
 
